@@ -27,19 +27,30 @@ import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.*
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.layers.RasterLayer
+import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.android.style.sources.TileSet
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
     val context = LocalContext.current
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    var mapReady by remember { mutableStateOf(false) }
+    var cameraRevision by remember { mutableIntStateOf(0) }
     var selectedMonument by remember { mutableStateOf<Monument?>(null) }
     var showWelcome by remember { mutableStateOf(false) }
     val preferences = remember { context.getSharedPreferences("onboarding", 0) }
+    val renderScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { showWelcome = !preferences.getBoolean("seen", false) }
 
@@ -50,11 +61,16 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                 MapLibre.getInstance(it)
                 MapView(it).also { view ->
                     view.onCreate(null)
+                    view.onStart()
+                    view.onResume()
                     view.getMapAsync { mapInstance ->
                         map = mapInstance
+                        mapInstance.addOnCameraIdleListener { cameraRevision++ }
                         mapInstance.setStyle(Style.Builder().fromUri(MapConfig.styleUrl)) { style ->
                             MapRenderer.ensureLayers(style)
                             mapInstance.cameraPosition = CameraPosition.Builder().target(MapLatLng(MapConfig.parisCenter.latitude, MapConfig.parisCenter.longitude)).zoom(11.4).build()
+                            mapReady = true
+                            MapRenderer.update(style, state, mapInstance, cameraRevision, renderScope)
                             mapInstance.addOnMapLongClickListener { point ->
                                 viewModel.simulateDiscovery(LatLng(point.latitude, point.longitude))
                                 true
@@ -70,8 +86,10 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                 }
             },
             update = { view ->
-                map?.style?.let { style ->
-                    MapRenderer.update(style, state, view)
+                if (mapReady) {
+                    map?.style?.let { style ->
+                        MapRenderer.update(style, state, map!!, cameraRevision, renderScope)
+                    }
                 }
             },
         )
@@ -151,34 +169,74 @@ private fun StatPill(text: String, modifier: Modifier = Modifier) {
 }
 
 private object MapRenderer {
+    private data class FogRenderKey(
+        val cameraRevision: Int,
+        val discoveredCells: Set<GridCellId>,
+    )
+
+    private var lastFogRenderKey: FogRenderKey? = null
+    private var fogRenderJob: Job? = null
+
     fun ensureLayers(style: Style) {
+        lastFogRenderKey = null
+        if (style.getSource(MapConfig.OSM_SOURCE_ID) == null) {
+            style.addSource(RasterSource(MapConfig.OSM_SOURCE_ID, TileSet("osm", MapConfig.OSM_TILE_URL), 256))
+        }
+        if (style.getLayer(MapConfig.OSM_LAYER_ID) == null) {
+            style.addLayer(RasterLayer(MapConfig.OSM_LAYER_ID, MapConfig.OSM_SOURCE_ID).withProperties(rasterOpacity(1f)))
+        }
         if (style.getSource(MapConfig.FOG_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.FOG_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
-        if (style.getLayer(MapConfig.FOG_LAYER_ID) == null) style.addLayer(FillLayer(MapConfig.FOG_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(fillColor(Color.parseColor("#172033")), fillOpacity(.89f)))
-        if (style.getLayer(MapConfig.FOG_BORDER_LAYER_ID) == null) style.addLayer(LineLayer(MapConfig.FOG_BORDER_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(lineColor(Color.parseColor("#52627d")), lineWidth(0.5f), lineOpacity(.35f)))
+        if (style.getLayer(MapConfig.FOG_LAYER_ID) == null) style.addLayer(FillLayer(MapConfig.FOG_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(fillColor(Color.parseColor("#172033")), fillOpacity(.60f)))
+        if (style.getLayer(MapConfig.FOG_BORDER_LAYER_ID) == null) style.addLayer(LineLayer(MapConfig.FOG_BORDER_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(lineColor(Color.parseColor("#52627d")), lineWidth(0.5f), lineOpacity(.25f)))
         if (style.getSource(MapConfig.MONUMENT_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.MONUMENT_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
         if (style.getLayer(MapConfig.MONUMENT_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.MONUMENT_LAYER_ID, MapConfig.MONUMENT_SOURCE_ID).withProperties(circleColor(Color.parseColor("#f7b955")), circleRadius(6f), circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f)))
         if (style.getSource(MapConfig.LOCATION_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.LOCATION_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
         if (style.getLayer(MapConfig.LOCATION_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.LOCATION_LAYER_ID, MapConfig.LOCATION_SOURCE_ID).withProperties(circleColor(Color.parseColor("#3277e8")), circleRadius(7f), circleStrokeColor(Color.WHITE), circleStrokeWidth(2f)))
     }
 
-    fun update(style: Style, state: AppUiState, mapView: MapView) {
-        updateSources(style, state, mapView)
+    fun update(style: Style, state: AppUiState, map: MapLibreMap, cameraRevision: Int, scope: CoroutineScope) {
+        updateSources(style, state, map, cameraRevision, scope)
     }
 
-    private fun updateSources(style: Style, state: AppUiState, mapView: MapView) {
+    private fun updateSources(style: Style, state: AppUiState, map: MapLibreMap, cameraRevision: Int, scope: CoroutineScope) {
         val fogSource = style.getSourceAs<GeoJsonSource>(MapConfig.FOG_SOURCE_ID) ?: return
         val monumentSource = style.getSourceAs<GeoJsonSource>(MapConfig.MONUMENT_SOURCE_ID) ?: return
         val locationSource = style.getSourceAs<GeoJsonSource>(MapConfig.LOCATION_SOURCE_ID) ?: return
-        // The initial Paris viewport is deliberately bounded; subsequent camera moves are handled by the same source update.
-        val area = GameArea()
-        val center = MapConfig.parisCenter.toGridCellId()
-        val cells = sequence {
-            for (y in center.y - 70..center.y + 70) for (x in center.x - 120..center.x + 120) yield(GridCellId(x, y))
-        }.filter(area::contains).filterNot(state.discoveredCells::contains)
-        fogSource.setGeoJson(FeatureCollection.fromFeatures(cells.map { cell ->
-            val points = cell.toWebMercatorBounds().toWgs84Polygon().map { Point.fromLngLat(it.longitude, it.latitude) }
-            Feature.fromGeometry(Polygon.fromLngLats(listOf(points)))
-        }.toList().toTypedArray()))
+
+        // Only render cells visible in the current viewport. Rendering the full Paris grid
+        // here used to create tens of thousands of polygons on the UI thread and caused ANRs.
+        val visibleBounds = runCatching { map.projection.visibleRegion.latLngBounds }.getOrNull()
+        val visibleMercatorBounds = visibleBounds?.let { bounds ->
+            val southWest = LatLng(bounds.southWest.latitude, bounds.southWest.longitude).toWebMercator()
+            val northEast = LatLng(bounds.northEast.latitude, bounds.northEast.longitude).toWebMercator()
+            MercatorBounds(
+                minX = minOf(southWest.x, northEast.x),
+                minY = minOf(southWest.y, northEast.y),
+                maxX = maxOf(southWest.x, northEast.x),
+                maxY = maxOf(southWest.y, northEast.y),
+            )
+        }
+        if (visibleMercatorBounds != null) {
+            val cells = GameArea().cellsForViewport(visibleMercatorBounds, margin = 1)
+                .filterNot(state.discoveredCells::contains)
+                .toList()
+            val renderKey = FogRenderKey(cameraRevision, state.discoveredCells)
+            if (renderKey != lastFogRenderKey) {
+                lastFogRenderKey = renderKey
+                fogRenderJob?.cancel()
+                fogRenderJob = scope.launch(Dispatchers.Default) {
+                    val fogFeatures = cells.map { cell ->
+                        val points = cell.toWebMercatorBounds().toWgs84Polygon().map { Point.fromLngLat(it.longitude, it.latitude) }
+                        Feature.fromGeometry(Polygon.fromLngLats(listOf(points)))
+                    }.toTypedArray()
+                    withContext(Dispatchers.Main.immediate) {
+                        if (lastFogRenderKey == renderKey) {
+                            fogSource.setGeoJson(FeatureCollection.fromFeatures(fogFeatures))
+                        }
+                    }
+                }
+            }
+        }
         val monumentFeatures = state.revealedMonuments.map { monument ->
             Feature.fromGeometry(Point.fromLngLat(monument.longitude, monument.latitude)).also { feature -> feature.addStringProperty("id", monument.id) }
         }

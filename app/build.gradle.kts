@@ -17,6 +17,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // The demo style is a reliable MapLibre container; the detailed OSM raster layer
+        // is added programmatically after it loads.
         buildConfigField("String", "MAP_STYLE_URL", "\"https://demotiles.maplibre.org/style.json\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -63,7 +65,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
-    implementation("org.maplibre.gl:android-sdk:13.0.2")
+    // OpenGL is more compatible with Android Studio emulators; MapLibre 13 defaults to Vulkan.
+    implementation("org.maplibre.gl:android-sdk-opengl:13.0.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

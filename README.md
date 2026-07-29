@@ -28,6 +28,10 @@ Pour un Android App Bundle release :
 
 L’URL du style est centralisée dans `MAP_STYLE_URL` dans `app/build.gradle.kts`. La valeur par défaut utilise le style de démonstration MapLibre ; avant publication, configurer un fournisseur de tuiles adapté et ses conditions d’utilisation. Aucune clé réelle n’est stockée dans le dépôt.
 
+Depuis Réglages, le bouton « Télécharger la carte de Paris » crée une région MapLibre hors connexion couvrant la bounding box du jeu aux niveaux de zoom 10 à 16. Le téléchargement doit être fait avec une connexion, idéalement en Wi-Fi ; une fois terminé, MapLibre réutilise localement le style, les polices, les icônes et les tuiles. La progression du téléchargement est affichée dans Réglages et la carte peut être supprimée séparément de la progression d’exploration.
+
+Le téléchargement hors connexion dépend des droits et conditions du fournisseur du style et des tuiles. Le serveur public `tile.openstreetmap.org` ne doit pas être utilisé comme solution de production illimitée. Pour une publication Play Store, choisir un fournisseur adapté, conserver les attributions et vérifier les conditions ODbL et celles du style utilisé.
+
 `app/src/main/assets/paris_monuments.json` contient 1 970 entrées dédupliquées à partir du CSV fourni, filtrées par la bounding box du MVP. Ce n’est pas une promesse d’exhaustivité : voir [DATA_IMPORT.md](DATA_IMPORT.md) pour régénérer l’asset depuis un export actualisé.
 
 La grille est calculée en Web Mercator EPSG:3857 avec des cellules stables de 100 m. Pour garder la carte fluide, le brouillard est généré pour la fenêtre de Paris affichée avec une marge ; la base ne stocke que les cellules découvertes.

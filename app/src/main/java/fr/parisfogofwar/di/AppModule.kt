@@ -15,6 +15,8 @@ import fr.parisfogofwar.domain.repository.ExplorationRepository
 import fr.parisfogofwar.domain.repository.MonumentRepository
 import fr.parisfogofwar.domain.usecase.*
 import fr.parisfogofwar.location.FusedLocationRepository
+import fr.parisfogofwar.map.MapLibreOfflineMapRepository
+import fr.parisfogofwar.map.OfflineMapRepository
 import javax.inject.Singleton
 
 @Module
@@ -46,4 +48,7 @@ object AppModule {
 
     @Provides @Singleton
     fun provideLocationRepository(repository: FusedLocationRepository): fr.parisfogofwar.domain.repository.LocationRepository = repository
+
+    @Provides @Singleton
+    fun provideOfflineMapRepository(repository: MapLibreOfflineMapRepository): OfflineMapRepository = repository
 }

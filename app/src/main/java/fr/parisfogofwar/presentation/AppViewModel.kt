@@ -8,6 +8,7 @@ import fr.parisfogofwar.domain.model.*
 import fr.parisfogofwar.domain.repository.LocationRepository
 import fr.parisfogofwar.domain.repository.MonumentRepository
 import fr.parisfogofwar.domain.usecase.*
+import fr.parisfogofwar.map.OfflineMapRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -34,9 +35,11 @@ class AppViewModel @Inject constructor(
     observeStatistics: ObserveExplorationStatisticsUseCase,
     private val discoverCurrentCell: DiscoverCurrentCellUseCase,
     private val resetProgress: ResetProgressUseCase,
+    private val offlineMapRepository: OfflineMapRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
+    val offlineMapState: StateFlow<fr.parisfogofwar.map.OfflineMapState> = offlineMapRepository.state
     private var locationJob: Job? = null
 
     init {
@@ -81,6 +84,9 @@ class AppViewModel @Inject constructor(
     fun resetProgress() {
         viewModelScope.launch { resetProgress() }
     }
+
+    fun downloadOfflineMap() = offlineMapRepository.downloadParis()
+    fun deleteOfflineMap() = offlineMapRepository.deleteParis()
 
     fun clearMessage() { _uiState.update { it.copy(message = null) } }
 
