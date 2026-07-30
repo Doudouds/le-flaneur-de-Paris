@@ -4,7 +4,7 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.tan
 
-const val GRID_CELL_SIZE_METERS = 100.0
+const val GRID_CELL_SIZE_METERS = 200.0
 const val MAX_ACCEPTED_ACCURACY_METERS = 40f
 const val MAX_LOCATION_AGE_MILLIS = 2 * 60 * 1000L
 private const val EARTH_RADIUS_METERS = 6_378_137.0
@@ -70,7 +70,9 @@ data class GameArea(
     private val maxCell: GridCellId = LatLng(maxLatitude, maxLongitude).toGridCellId()
 
     fun contains(location: LatLng): Boolean =
-        location.latitude in minLatitude..maxLatitude && location.longitude in minLongitude..maxLongitude
+        location.latitude in minLatitude..maxLatitude &&
+            location.longitude in minLongitude..maxLongitude &&
+            parisBoundaryContains(location)
 
     fun contains(cellId: GridCellId): Boolean = cellId.x in minCell.x..maxCell.x && cellId.y in minCell.y..maxCell.y
 
@@ -88,6 +90,47 @@ data class GameArea(
             for (y in fromY..toY) for (x in fromX..toX) yield(GridCellId(x, y))
         }
     }
+}
+
+// Simplified from the official commune boundary of Paris (INSEE code 75056).
+// It is used for gameplay filtering; the map renderer uses the more detailed
+// GeoJSON boundary stored in assets/paris_boundary.geojson.
+private val parisBoundary = listOf(
+    LatLng(48.901485, 2.351984), LatLng(48.901931, 2.385582), LatLng(48.894722, 2.397609),
+    LatLng(48.883821, 2.400107), LatLng(48.876443, 2.412453), LatLng(48.864978, 2.413976),
+    LatLng(48.855178, 2.415286), LatLng(48.849371, 2.416326), LatLng(48.840488, 2.414248),
+    LatLng(48.833779, 2.412587), LatLng(48.835398, 2.421016), LatLng(48.838891, 2.421062),
+    LatLng(48.842498, 2.419357), LatLng(48.841886, 2.424535), LatLng(48.840893, 2.437184),
+    LatLng(48.845964, 2.440758), LatLng(48.844677, 2.449527), LatLng(48.842938, 2.461008),
+    LatLng(48.836788, 2.469662), LatLng(48.834120, 2.469197), LatLng(48.831018, 2.465273),
+    LatLng(48.827623, 2.464662), LatLng(48.817365, 2.459115), LatLng(48.817930, 2.448935),
+    LatLng(48.819187, 2.437345), LatLng(48.824191, 2.424654), LatLng(48.825087, 2.410270),
+    LatLng(48.828791, 2.399775), LatLng(48.823729, 2.385226), LatLng(48.818433, 2.370643),
+    LatLng(48.815943, 2.356232), LatLng(48.816102, 2.347178), LatLng(48.816655, 2.335581),
+    LatLng(48.820629, 2.321661), LatLng(48.825126, 2.301315), LatLng(48.830291, 2.284719),
+    LatLng(48.828039, 2.272928), LatLng(48.827969, 2.267626), LatLng(48.833011, 2.269931),
+    LatLng(48.834419, 2.258503), LatLng(48.845730, 2.249867), LatLng(48.850435, 2.237379),
+    LatLng(48.855088, 2.224269), LatLng(48.865380, 2.228377), LatLng(48.870523, 2.235576),
+    LatLng(48.875904, 2.245157), LatLng(48.880387, 2.258467), LatLng(48.877968, 2.277487),
+    LatLng(48.882971, 2.281014), LatLng(48.889456, 2.291634), LatLng(48.895090, 2.305715),
+    LatLng(48.900460, 2.319887), LatLng(48.901208, 2.337938),
+)
+
+private fun parisBoundaryContains(location: LatLng): Boolean {
+    var inside = false
+    var previous = parisBoundary.last()
+    for (current in parisBoundary) {
+        val crossesLatitude = (current.latitude > location.latitude) != (previous.latitude > location.latitude)
+        if (crossesLatitude) {
+            val crossingLongitude = previous.longitude +
+                (current.longitude - previous.longitude) *
+                (location.latitude - previous.latitude) /
+                (current.latitude - previous.latitude)
+            if (location.longitude < crossingLongitude) inside = !inside
+        }
+        previous = current
+    }
+    return inside
 }
 
 data class DomainLocation(val coordinates: LatLng, val accuracyMeters: Float, val timestampMillis: Long)

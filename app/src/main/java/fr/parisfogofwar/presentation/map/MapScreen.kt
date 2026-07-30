@@ -67,7 +67,8 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                         map = mapInstance
                         mapInstance.addOnCameraIdleListener { cameraRevision++ }
                         mapInstance.setStyle(Style.Builder().fromUri(MapConfig.styleUrl)) { style ->
-                            MapRenderer.ensureLayers(style)
+                            val parisBoundaryJson = it.assets.open("paris_boundary.geojson").bufferedReader().use { reader -> reader.readText() }
+                            MapRenderer.ensureLayers(style, parisBoundaryJson)
                             mapInstance.cameraPosition = CameraPosition.Builder().target(MapLatLng(MapConfig.parisCenter.latitude, MapConfig.parisCenter.longitude)).zoom(11.4).build()
                             mapReady = true
                             MapRenderer.update(style, state, mapInstance, cameraRevision, renderScope)
@@ -177,8 +178,9 @@ private object MapRenderer {
     private var lastFogRenderKey: FogRenderKey? = null
     private var fogRenderJob: Job? = null
 
-    fun ensureLayers(style: Style) {
+    fun ensureLayers(style: Style, parisBoundaryJson: String) {
         lastFogRenderKey = null
+        parisBoundaryRing = Polygon.fromJson(parisBoundaryJson).coordinates().firstOrNull().orEmpty()
         if (style.getSource(MapConfig.OSM_SOURCE_ID) == null) {
             style.addSource(RasterSource(MapConfig.OSM_SOURCE_ID, TileSet("osm", MapConfig.OSM_TILE_URL), 256))
         }
@@ -186,7 +188,7 @@ private object MapRenderer {
             style.addLayer(RasterLayer(MapConfig.OSM_LAYER_ID, MapConfig.OSM_SOURCE_ID).withProperties(rasterOpacity(1f)))
         }
         if (style.getSource(MapConfig.FOG_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.FOG_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
-        if (style.getLayer(MapConfig.FOG_LAYER_ID) == null) style.addLayer(FillLayer(MapConfig.FOG_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(fillColor(Color.parseColor("#172033")), fillOpacity(.60f)))
+        if (style.getLayer(MapConfig.FOG_LAYER_ID) == null) style.addLayer(FillLayer(MapConfig.FOG_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(fillColor(Color.parseColor("#172033")), fillOpacity(1f)))
         if (style.getLayer(MapConfig.FOG_BORDER_LAYER_ID) == null) style.addLayer(LineLayer(MapConfig.FOG_BORDER_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(lineColor(Color.parseColor("#52627d")), lineWidth(0.5f), lineOpacity(.25f)))
         if (style.getSource(MapConfig.MONUMENT_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.MONUMENT_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
         if (style.getLayer(MapConfig.MONUMENT_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.MONUMENT_LAYER_ID, MapConfig.MONUMENT_SOURCE_ID).withProperties(circleColor(Color.parseColor("#f7b955")), circleRadius(6f), circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f)))
@@ -203,36 +205,24 @@ private object MapRenderer {
         val monumentSource = style.getSourceAs<GeoJsonSource>(MapConfig.MONUMENT_SOURCE_ID) ?: return
         val locationSource = style.getSourceAs<GeoJsonSource>(MapConfig.LOCATION_SOURCE_ID) ?: return
 
-        // Only render cells visible in the current viewport. Rendering the full Paris grid
-        // here used to create tens of thousands of polygons on the UI thread and caused ANRs.
-        val visibleBounds = runCatching { map.projection.visibleRegion.latLngBounds }.getOrNull()
-        val visibleMercatorBounds = visibleBounds?.let { bounds ->
-            val southWest = LatLng(bounds.southWest.latitude, bounds.southWest.longitude).toWebMercator()
-            val northEast = LatLng(bounds.northEast.latitude, bounds.northEast.longitude).toWebMercator()
-            MercatorBounds(
-                minX = minOf(southWest.x, northEast.x),
-                minY = minOf(southWest.y, northEast.y),
-                maxX = maxOf(southWest.x, northEast.x),
-                maxY = maxOf(southWest.y, northEast.y),
-            )
-        }
-        if (visibleMercatorBounds != null) {
-            val cells = GameArea().cellsForViewport(visibleMercatorBounds, margin = 1)
-                .filterNot(state.discoveredCells::contains)
-                .toList()
-            val renderKey = FogRenderKey(cameraRevision, state.discoveredCells)
-            if (renderKey != lastFogRenderKey) {
-                lastFogRenderKey = renderKey
-                fogRenderJob?.cancel()
-                fogRenderJob = scope.launch(Dispatchers.Default) {
-                    val fogFeatures = cells.map { cell ->
+        val renderKey = FogRenderKey(cameraRevision, state.discoveredCells)
+        if (renderKey != lastFogRenderKey && parisBoundaryRing.isNotEmpty()) {
+            lastFogRenderKey = renderKey
+            fogRenderJob?.cancel()
+            fogRenderJob = scope.launch(Dispatchers.Default) {
+                // The Paris boundary is the outer ring. Discovered 200 m cells are
+                // holes, so the fog cannot cover neighboring municipalities.
+                val rings = buildList {
+                    add(parisBoundaryRing)
+                    state.discoveredCells.forEach { cell ->
                         val points = cell.toWebMercatorBounds().toWgs84Polygon().map { Point.fromLngLat(it.longitude, it.latitude) }
-                        Feature.fromGeometry(Polygon.fromLngLats(listOf(points)))
-                    }.toTypedArray()
-                    withContext(Dispatchers.Main.immediate) {
-                        if (lastFogRenderKey == renderKey) {
-                            fogSource.setGeoJson(FeatureCollection.fromFeatures(fogFeatures))
-                        }
+                        add(points)
+                    }
+                }
+                val fogFeature = Feature.fromGeometry(Polygon.fromLngLats(rings))
+                withContext(Dispatchers.Main.immediate) {
+                    if (lastFogRenderKey == renderKey) {
+                        fogSource.setGeoJson(FeatureCollection.fromFeatures(arrayOf(fogFeature)))
                     }
                 }
             }
@@ -245,4 +235,6 @@ private object MapRenderer {
         val locationFeatures: List<Feature> = if (location == null) emptyList() else listOf(Feature.fromGeometry(Point.fromLngLat(location.longitude, location.latitude)))
         locationSource.setGeoJson(FeatureCollection.fromFeatures(locationFeatures))
     }
+
+    private var parisBoundaryRing: List<Point> = emptyList()
 }
