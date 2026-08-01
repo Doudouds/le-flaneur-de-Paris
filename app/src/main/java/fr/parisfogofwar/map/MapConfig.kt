@@ -9,6 +9,8 @@ object MapConfig {
     const val FOG_BORDER_LAYER_ID = "fog-border-layer"
     const val MONUMENT_SOURCE_ID = "monuments-source"
     const val MONUMENT_LAYER_ID = "monuments-layer"
+    const val MONUMENT_HINT_SOURCE_ID = "monument-hints-source"
+    const val MONUMENT_HINT_LAYER_ID = "monument-hints-layer"
     const val LOCATION_SOURCE_ID = "location-source"
     const val LOCATION_LAYER_ID = "location-layer"
     const val OSM_SOURCE_ID = "osm-raster-source"

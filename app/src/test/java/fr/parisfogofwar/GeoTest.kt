@@ -34,7 +34,7 @@ class GeoTest {
         val repo = FakeExplorationRepository()
         val useCase = DiscoverCurrentCellUseCase(repo, GameArea())
         val now = System.currentTimeMillis()
-        assertEquals(CellDiscoveryResult.AccuracyTooLow, useCase(DomainLocation(LatLng(48.85, 2.35), 41f, now)))
+        assertEquals(CellDiscoveryResult.AccuracyTooLow, useCase(DomainLocation(LatLng(48.85, 2.35), 101f, now)))
         assertEquals(CellDiscoveryResult.OutsideGameArea, useCase(DomainLocation(LatLng(49.0, 2.35), 1f, now)))
         assertEquals(CellDiscoveryResult.InvalidLocation, useCase(DomainLocation(LatLng(Double.NaN, 2.35), 1f, now)))
     }

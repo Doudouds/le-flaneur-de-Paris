@@ -1,4 +1,4 @@
-# Paris Fog of War
+# Le Flâneur de Paris
 
 MVP Android d’exploration urbaine : la carte de Paris est recouverte d’un brouillard découpé en cellules de 100 m. Une position GPS valide au premier plan découvre une cellule ; les monuments historiques situés dans cette cellule deviennent visibles et la progression est conservée localement.
 
@@ -10,7 +10,7 @@ Kotlin, Gradle Kotlin DSL, Jetpack Compose Material 3, MVVM, Room, Hilt, Corouti
 
 1. Ouvrir le dossier dans Android Studio.
 2. Synchroniser Gradle et lancer la configuration `app` sur un appareil ou un émulateur avec Google Play Services.
-3. Accorder la localisation depuis l’écran Carte. Aucune permission de localisation en arrière-plan n’est demandée.
+3. Accorder la localisation depuis l’écran Carte. Le suivi en arrière-plan est optionnel et peut demander « Autoriser tout le temps » dans les réglages Android de l’application.
 
 Pour un APK debug :
 

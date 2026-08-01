@@ -49,7 +49,16 @@ fun ParisApp(viewModel: AppViewModel) {
     ) { padding ->
         NavHost(navController, startDestination = "map", modifier = Modifier.padding(padding)) {
             composable("map") { MapScreen(state, viewModel) }
-            composable("collection") { CollectionScreen(state.revealedMonuments) }
+            composable("collection") {
+                CollectionScreen(
+                    monuments = state.revealedMonuments,
+                    arrondissementTotals = state.arrondissementTotals,
+                    onLocate = { monument ->
+                        viewModel.focusMonument(monument)
+                        navController.navigate("map") { launchSingleTop = true }
+                    },
+                )
+            }
             composable("statistics") { StatisticsScreen(state.statistics) }
             composable("settings") { SettingsScreen(state.statistics, viewModel) }
         }

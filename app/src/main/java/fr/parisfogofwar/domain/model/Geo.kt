@@ -5,7 +5,9 @@ import kotlin.math.ln
 import kotlin.math.tan
 
 const val GRID_CELL_SIZE_METERS = 200.0
-const val MAX_ACCEPTED_ACCURACY_METERS = 40f
+// A phone can commonly report 50–100 m accuracy in dense urban areas or indoors.
+// The exploration cells are 200 m wide, so 100 m is a reasonable compromise.
+const val MAX_ACCEPTED_ACCURACY_METERS = 100f
 const val MAX_LOCATION_AGE_MILLIS = 2 * 60 * 1000L
 private const val EARTH_RADIUS_METERS = 6_378_137.0
 
@@ -146,6 +148,8 @@ data class Monument(
     val merimeeReference: String?,
     val osmId: String?,
     val cellId: GridCellId,
+    val discoveredAtEpochMillis: Long? = null,
+    val arrondissement: Int? = null,
 )
 
 data class ExplorationStatistics(

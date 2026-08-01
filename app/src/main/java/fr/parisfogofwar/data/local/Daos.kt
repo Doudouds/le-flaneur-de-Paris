@@ -17,8 +17,14 @@ interface MonumentDao {
     @Query("SELECT COUNT(*) FROM monuments")
     fun observeCount(): Flow<Int>
 
-    @Query("SELECT m.* FROM monuments m INNER JOIN discovered_cells c ON c.gridX = m.gridX AND c.gridY = m.gridY ORDER BY m.name COLLATE NOCASE")
-    fun observeRevealed(): Flow<List<MonumentEntity>>
+    @Query("SELECT m.*, c.discoveredAtEpochMillis FROM monuments m INNER JOIN discovered_cells c ON c.gridX = m.gridX AND c.gridY = m.gridY ORDER BY c.discoveredAtEpochMillis, m.name COLLATE NOCASE")
+    fun observeRevealed(): Flow<List<RevealedMonumentRow>>
+
+    @Query("SELECT * FROM monuments")
+    fun observeAll(): Flow<List<MonumentEntity>>
+
+    @Query("SELECT DISTINCT gridX, gridY FROM monuments")
+    fun observeMonumentCells(): Flow<List<MonumentCellRow>>
 }
 
 @Dao

@@ -8,7 +8,9 @@ import fr.parisfogofwar.domain.model.*
 import fr.parisfogofwar.domain.repository.LocationRepository
 import fr.parisfogofwar.domain.repository.MonumentRepository
 import fr.parisfogofwar.domain.usecase.*
+import fr.parisfogofwar.location.BackgroundLocationController
 import fr.parisfogofwar.map.OfflineMapRepository
+import fr.parisfogofwar.notifications.DiscoveryNotificationHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -19,11 +21,15 @@ enum class LocationPermissionState { Unknown, Granted, Denied }
 data class AppUiState(
     val isLoading: Boolean = true,
     val permissionState: LocationPermissionState = LocationPermissionState.Unknown,
+    val backgroundTrackingEnabled: Boolean = false,
     val currentLocation: LatLng? = null,
     val discoveredCells: Set<GridCellId> = emptySet(),
+    val allMonumentCells: Set<GridCellId> = emptySet(),
     val revealedMonuments: List<Monument> = emptyList(),
+    val arrondissementTotals: Map<Int?, Int> = emptyMap(),
     val statistics: ExplorationStatistics = ExplorationStatistics(),
     val message: String? = null,
+    val focusLocation: LatLng? = null,
 )
 
 @HiltViewModel
@@ -34,22 +40,48 @@ class AppViewModel @Inject constructor(
     observeMonuments: ObserveRevealedMonumentsUseCase,
     observeStatistics: ObserveExplorationStatisticsUseCase,
     private val discoverCurrentCell: DiscoverCurrentCellUseCase,
-    private val resetProgress: ResetProgressUseCase,
+    private val resetProgressUseCase: ResetProgressUseCase,
     private val offlineMapRepository: OfflineMapRepository,
+    private val discoveryNotificationHelper: DiscoveryNotificationHelper,
+    private val backgroundLocationController: BackgroundLocationController,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(AppUiState())
+    private val _uiState = MutableStateFlow(
+        AppUiState(backgroundTrackingEnabled = backgroundLocationController.isEnabled()),
+    )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
     val offlineMapState: StateFlow<fr.parisfogofwar.map.OfflineMapState> = offlineMapRepository.state
     private var locationJob: Job? = null
+    private var observedMonumentIds: Set<String>? = null
 
     init {
+        backgroundLocationController.startIfEnabled()
         viewModelScope.launch {
             runCatching { monumentRepository.ensureCatalogImported() }
                 .onFailure { _uiState.update { it.copy(isLoading = false, message = "Impossible de charger le catalogue local.") } }
-            combine(observeCells(), observeMonuments(), observeStatistics()) { cells, monuments, stats ->
-                Triple(cells, monuments, stats)
-            }.collect { (cells, monuments, stats) ->
-                _uiState.update { it.copy(isLoading = false, discoveredCells = cells, revealedMonuments = monuments, statistics = stats) }
+            combine(
+                observeCells(),
+                observeMonuments(),
+                observeStatistics(),
+                monumentRepository.observeMonumentCells(),
+                monumentRepository.observeArrondissementTotals(),
+            ) { cells, monuments, stats, monumentCells, arrondissementTotals ->
+                Quintuple(cells, monuments, stats, monumentCells, arrondissementTotals)
+            }.collect { (cells, monuments, stats, monumentCells, arrondissementTotals) ->
+                val currentMonumentIds = monuments.mapTo(mutableSetOf()) { it.id }
+                observedMonumentIds?.let { previousIds ->
+                    monuments.filter { it.id !in previousIds }.forEach(discoveryNotificationHelper::notifyNewMonument)
+                }
+                observedMonumentIds = currentMonumentIds
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        discoveredCells = cells,
+                        allMonumentCells = monumentCells,
+                        revealedMonuments = monuments,
+                        arrondissementTotals = arrondissementTotals,
+                        statistics = stats,
+                    )
+                }
             }
         }
     }
@@ -65,13 +97,24 @@ class AppViewModel @Inject constructor(
             locationRepository.locations().collect { location ->
                 _uiState.update { it.copy(currentLocation = location.coordinates) }
                 when (val result = discoverCurrentCell(location)) {
-                    is CellDiscoveryResult.NewlyDiscovered -> showMessage("Nouveau secteur découvert !")
-                    CellDiscoveryResult.AccuracyTooLow -> showMessage("La précision GPS est insuffisante.")
+                    is CellDiscoveryResult.NewlyDiscovered -> Unit
+                    // Ignore imprecise fixes silently. They must not block the user
+                    // with a repeated warning while the phone is refining its fix.
+                    CellDiscoveryResult.AccuracyTooLow -> Unit
                     CellDiscoveryResult.OutsideGameArea -> showMessage("Vous êtes en dehors de la zone d’exploration.")
                     CellDiscoveryResult.InvalidLocation, is CellDiscoveryResult.AlreadyDiscovered -> Unit
                 }
             }
         }
+    }
+
+    fun setBackgroundTrackingEnabled(enabled: Boolean) {
+        if (enabled && !backgroundLocationController.hasLocationPermission()) {
+            showMessage("Autorisez d'abord la localisation pour activer le suivi.")
+            return
+        }
+        backgroundLocationController.setEnabled(enabled)
+        _uiState.update { it.copy(backgroundTrackingEnabled = enabled) }
     }
 
     fun simulateDiscovery(location: LatLng) {
@@ -82,7 +125,10 @@ class AppViewModel @Inject constructor(
     }
 
     fun resetProgress() {
-        viewModelScope.launch { resetProgress() }
+        viewModelScope.launch {
+            runCatching { resetProgressUseCase() }
+                .onFailure { showMessage("Impossible de supprimer la progression.") }
+        }
     }
 
     fun downloadOfflineMap() = offlineMapRepository.downloadParis()
@@ -90,5 +136,13 @@ class AppViewModel @Inject constructor(
 
     fun clearMessage() { _uiState.update { it.copy(message = null) } }
 
+    fun focusMonument(monument: Monument) {
+        _uiState.update { it.copy(focusLocation = LatLng(monument.latitude, monument.longitude)) }
+    }
+
+    fun clearFocusLocation() { _uiState.update { it.copy(focusLocation = null) } }
+
     private fun showMessage(message: String) { _uiState.update { it.copy(message = message) } }
 }
+
+private data class Quintuple<A, B, C, D, E>(val first: A, val second: B, val third: C, val fourth: D, val fifth: E)

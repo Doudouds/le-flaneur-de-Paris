@@ -1,5 +1,6 @@
 package fr.parisfogofwar.data.local
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 
@@ -25,5 +26,15 @@ data class MonumentEntity(
 data class DiscoveredCellEntity(
     val gridX: Long,
     val gridY: Long,
+    val discoveredAtEpochMillis: Long,
+)
+
+data class MonumentCellRow(
+    val gridX: Long,
+    val gridY: Long,
+)
+
+data class RevealedMonumentRow(
+    @Embedded val monument: MonumentEntity,
     val discoveredAtEpochMillis: Long,
 )

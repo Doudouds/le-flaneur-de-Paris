@@ -1,6 +1,7 @@
 package fr.parisfogofwar.data.repository
 
 import android.content.Context
+import org.json.JSONArray
 import fr.parisfogofwar.data.local.*
 import fr.parisfogofwar.domain.model.*
 import fr.parisfogofwar.domain.repository.ExplorationRepository
@@ -29,6 +30,7 @@ class RoomMonumentRepository(
     private val area: GameArea,
 ) : MonumentRepository {
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+    private val arrondissementResolver = ParisArrondissementResolver(context)
 
     override suspend fun ensureCatalogImported() {
         if (dao.count() > 0) return
@@ -58,17 +60,75 @@ class RoomMonumentRepository(
     }
 
     override fun observeRevealedMonuments(): Flow<List<Monument>> = dao.observeRevealed().map { list ->
-        list.map { it.toDomain() }
+        list.map { row -> row.monument.toDomain(row.discoveredAtEpochMillis) }
     }
 
     override fun observeTotalCount(): Flow<Int> = dao.observeCount()
 
-    private fun MonumentEntity.toDomain() = Monument(
+    override fun observeArrondissementTotals(): Flow<Map<Int?, Int>> = dao.observeAll().map { monuments ->
+        monuments.groupingBy { arrondissementResolver.find(it.latitude, it.longitude) }.eachCount()
+    }
+
+    override fun observeMonumentCells(): Flow<Set<GridCellId>> = dao.observeMonumentCells().map { rows ->
+        rows.mapTo(mutableSetOf()) { GridCellId(it.gridX, it.gridY) }
+    }
+
+    private fun MonumentEntity.toDomain(discoveredAtEpochMillis: Long? = null) = Monument(
         id = id, name = name, latitude = latitude, longitude = longitude,
         category = category, description = description, imageUrl = imageUrl,
         merimeeReference = merimeeReference, osmId = osmId,
         cellId = GridCellId(gridX, gridY),
+        discoveredAtEpochMillis = discoveredAtEpochMillis,
+        arrondissement = arrondissementResolver.find(latitude, longitude),
     )
+}
+
+private class ParisArrondissementResolver(context: Context) {
+    private data class Point(val longitude: Double, val latitude: Double)
+    private data class Boundary(val number: Int, val ring: List<Point>)
+
+    private val boundaries: List<Boundary> by lazy {
+        val root = context.assets.open("paris_arrondissements.geojson").bufferedReader().use { reader ->
+            org.json.JSONObject(reader.readText())
+        }
+        val features = root.getJSONArray("features")
+        buildList(features.length()) {
+            for (index in 0 until features.length()) {
+                val feature = features.getJSONObject(index)
+                val number = feature.getJSONObject("properties").getInt("c_ar")
+                val ring = feature.getJSONObject("geometry")
+                    .getJSONArray("coordinates")
+                    .getJSONArray(0)
+                    .toPointList()
+                if (ring.size >= 3) add(Boundary(number, ring))
+            }
+        }
+    }
+
+    fun find(latitude: Double, longitude: Double): Int? =
+        boundaries.firstOrNull { contains(it.ring, longitude, latitude) }?.number
+
+    private fun JSONArray.toPointList(): List<Point> = buildList(length()) {
+        for (index in 0 until length()) {
+            val coordinate = getJSONArray(index)
+            add(Point(coordinate.getDouble(0), coordinate.getDouble(1)))
+        }
+    }
+
+    private fun contains(ring: List<Point>, longitude: Double, latitude: Double): Boolean {
+        var inside = false
+        var previous = ring.last()
+        for (current in ring) {
+            val crossesLatitude = (current.latitude > latitude) != (previous.latitude > latitude)
+            if (crossesLatitude) {
+                val intersectionLongitude = (previous.longitude - current.longitude) *
+                    (latitude - current.latitude) / (previous.latitude - current.latitude) + current.longitude
+                if (longitude < intersectionLongitude) inside = !inside
+            }
+            previous = current
+        }
+        return inside
+    }
 }
 
 class RoomExplorationRepository(private val dao: DiscoveredCellDao) : ExplorationRepository {

@@ -5,6 +5,7 @@ import android.content.Context
 import android.location.Location
 import android.os.Looper
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.CancellationTokenSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fr.parisfogofwar.domain.model.DomainLocation
 import fr.parisfogofwar.domain.model.LatLng
@@ -21,6 +22,7 @@ class FusedLocationRepository @Inject constructor(
 
     @SuppressLint("MissingPermission")
     override fun locations(): Flow<DomainLocation> = callbackFlow {
+        val cancellationTokenSource = CancellationTokenSource()
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000L)
             .setMinUpdateIntervalMillis(5_000L)
             .setMaxUpdateDelayMillis(20_000L)
@@ -33,11 +35,23 @@ class FusedLocationRepository @Inject constructor(
             }
         }
         try {
+            // Use the cached position immediately so the map can center without
+            // waiting for a new GNSS fix. A fresh high-accuracy fix follows it.
+            client.lastLocation.addOnSuccessListener { location ->
+                location?.let { trySend(it.toDomain()) }
+            }
+            client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellationTokenSource.token)
+                .addOnSuccessListener { location ->
+                    location?.let { trySend(it.toDomain()) }
+                }
             client.requestLocationUpdates(request, callback, Looper.getMainLooper())
         } catch (_: SecurityException) {
             close()
         }
-        awaitClose { client.removeLocationUpdates(callback) }
+        awaitClose {
+            cancellationTokenSource.cancel()
+            client.removeLocationUpdates(callback)
+        }
     }
 
     private fun Location.toDomain() = DomainLocation(

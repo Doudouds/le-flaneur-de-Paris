@@ -9,6 +9,8 @@ interface MonumentRepository {
     suspend fun ensureCatalogImported()
     fun observeRevealedMonuments(): Flow<List<Monument>>
     fun observeTotalCount(): Flow<Int>
+    fun observeMonumentCells(): Flow<Set<GridCellId>>
+    fun observeArrondissementTotals(): Flow<Map<Int?, Int>>
 }
 
 interface ExplorationRepository {

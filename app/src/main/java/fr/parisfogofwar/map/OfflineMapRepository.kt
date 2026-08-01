@@ -52,19 +52,23 @@ class MapLibreOfflineMapRepository @Inject constructor(
             return
         }
         val area = GameArea()
-        val bounds = LatLngBounds.from(area.maxLatitude, area.minLongitude, area.minLatitude, area.maxLongitude)
-        val definition = OfflineTilePyramidRegionDefinition(MapConfig.styleUrl, bounds, MIN_ZOOM, MAX_ZOOM, 1f, false)
-        manager.createOfflineRegion(definition, METADATA.toByteArray(), object : OfflineManager.CreateOfflineRegionCallback {
-            override fun onCreate(offlineRegion: OfflineRegion) {
-                parisRegion = offlineRegion
-                observe(offlineRegion)
-                offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
-            }
+        try {
+            val bounds = LatLngBounds.from(area.maxLatitude, area.maxLongitude, area.minLatitude, area.minLongitude)
+            val definition = OfflineTilePyramidRegionDefinition(MapConfig.styleUrl, bounds, MIN_ZOOM, MAX_ZOOM, 1f, false)
+            manager.createOfflineRegion(definition, METADATA.toByteArray(), object : OfflineManager.CreateOfflineRegionCallback {
+                override fun onCreate(offlineRegion: OfflineRegion) {
+                    parisRegion = offlineRegion
+                    observe(offlineRegion)
+                    offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
+                }
 
-            override fun onError(error: String) {
-                _state.value = OfflineMapState(errorMessage = error)
-            }
-        })
+                override fun onError(error: String) {
+                    _state.value = OfflineMapState(errorMessage = error)
+                }
+            })
+        } catch (error: IllegalArgumentException) {
+            _state.value = OfflineMapState(errorMessage = error.message ?: "Impossible de préparer la carte hors connexion.")
+        }
     }
 
     override fun deleteParis() {

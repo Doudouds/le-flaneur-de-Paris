@@ -9,6 +9,6 @@ private val LightColors = lightColorScheme(primary = Color(0xFF315C8C), secondar
 private val DarkColors = darkColorScheme(primary = Color(0xFFA8C8F5), secondary = Color(0xFFE4C56D))
 
 @Composable
-fun ParisFogTheme(content: @Composable () -> Unit) {
+fun LeFlaneurTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, content = content)
 }
