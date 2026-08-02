@@ -34,6 +34,8 @@ Le téléchargement hors connexion dépend des droits et conditions du fournisse
 
 `app/src/main/assets/paris_monuments.json` contient 1 970 entrées dédupliquées à partir du CSV fourni, filtrées par la bounding box du MVP. Ce n’est pas une promesse d’exhaustivité : voir [DATA_IMPORT.md](DATA_IMPORT.md) pour régénérer l’asset depuis un export actualisé.
 
+Les images de monuments sont recherchées de façon conservatrice sur Wikimedia Commons. L’application conserve uniquement les images avec une licence réutilisable identifiée (domaine public, CC0, CC BY ou CC BY-SA), affiche l’auteur et la licence dans le détail du monument, puis met les vignettes en cache local dans `monument-image-cache`. Pour enrichir le fichier embarqué avant une publication, exécuter `python tools/enrich_wikimedia_images.py` ; le script regroupe et ralentit ses requêtes. Une recherche géographique complémentaire, plus lente, est disponible avec `--geosearch`. À défaut, la recherche se fait progressivement à l’affichage ; une connexion est alors nécessaire lors de la première consultation.
+
 La grille est calculée en Web Mercator EPSG:3857 avec des cellules stables de 100 m. Pour garder la carte fluide, le brouillard est généré pour la fenêtre de Paris affichée avec une marge ; la base ne stocke que les cellules découvertes.
 
 En debug, un appui long sur la carte simule la découverte de la cellule. Cette fonction est protégée par `BuildConfig.DEBUG` et n’est pas disponible dans le build release.

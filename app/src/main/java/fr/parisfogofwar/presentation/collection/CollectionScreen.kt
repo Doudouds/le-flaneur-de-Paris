@@ -3,11 +3,15 @@ package fr.parisfogofwar.presentation.collection
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import fr.parisfogofwar.domain.model.Monument
 import java.net.URLEncoder
 
@@ -26,6 +32,7 @@ import java.net.URLEncoder
 fun CollectionScreen(
     monuments: List<Monument>,
     arrondissementTotals: Map<Int?, Int>,
+    onImageNeeded: (Monument) -> Unit,
     onLocate: (Monument) -> Unit,
 ) {
     val context = LocalContext.current
@@ -92,7 +99,7 @@ fun CollectionScreen(
                             }
                         }
                     }
-                    MonumentRow(monument, onLocate)
+                    MonumentRow(monument, onImageNeeded, onLocate)
                 }
             }
         }
@@ -100,11 +107,12 @@ fun CollectionScreen(
 }
 
 @Composable
-private fun MonumentRow(monument: Monument, onLocate: (Monument) -> Unit) {
+private fun MonumentRow(monument: Monument, onImageNeeded: (Monument) -> Unit, onLocate: (Monument) -> Unit) {
     val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(monument.id, monument.imageUrl) { onImageNeeded(monument) }
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            MonumentThumbnail(monument)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(monument.name, style = MaterialTheme.typography.titleMedium)
                 monument.category
@@ -138,6 +146,30 @@ private fun MonumentRow(monument: Monument, onLocate: (Monument) -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MonumentThumbnail(monument: Monument) {
+    Box(
+        modifier = Modifier
+            .size(width = 96.dp, height = 76.dp)
+            .clip(RoundedCornerShape(10.dp)),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        if (monument.imageUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(monument.imageUrl)
+                    .diskCacheKey("monument-${monument.id}")
+                    .build(),
+                contentDescription = "Photo de ${monument.name}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Icon(Icons.Default.BrokenImage, contentDescription = "Image indisponible", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

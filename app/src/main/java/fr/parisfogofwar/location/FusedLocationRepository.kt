@@ -25,7 +25,9 @@ class FusedLocationRepository @Inject constructor(
         val cancellationTokenSource = CancellationTokenSource()
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000L)
             .setMinUpdateIntervalMillis(5_000L)
-            .setMaxUpdateDelayMillis(20_000L)
+            .setMinUpdateDistanceMeters(5f)
+            .setWaitForAccurateLocation(true)
+            .setMaxUpdateDelayMillis(10_000L)
             .build()
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {

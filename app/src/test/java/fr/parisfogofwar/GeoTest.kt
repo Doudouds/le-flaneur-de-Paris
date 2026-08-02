@@ -47,6 +47,29 @@ class GeoTest {
         assertTrue(useCase(location.copy(timestampMillis = System.currentTimeMillis())) is CellDiscoveryResult.AlreadyDiscovered)
         assertEquals(1, repo.dates.value.size)
     }
+
+    @Test fun locationDisplayFilterRejectsPoorAccuracyAndLargeJumps() {
+        val filter = LocationDisplayFilter()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 10f, 1_000L)
+
+        assertEquals(first.coordinates, filter.accept(first, nowMillis = 2_000L))
+        assertNull(filter.accept(first.copy(accuracyMeters = 101f, timestampMillis = 6_000L), nowMillis = 6_000L))
+        assertNull(filter.accept(DomainLocation(LatLng(48.8666, 2.3522), 10f, 6_000L), nowMillis = 6_000L))
+        assertNull(filter.accept(first.copy(timestampMillis = 1_000L), nowMillis = 32_001L))
+    }
+
+    @Test fun locationDisplayFilterSmoothsSmallMovements() {
+        val filter = LocationDisplayFilter()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 10f, 1_000L)
+        val next = DomainLocation(LatLng(48.8567, 2.3522), 10f, 6_000L)
+
+        filter.accept(first, nowMillis = 2_000L)
+        val displayed = filter.accept(next, nowMillis = 6_000L)
+
+        assertNotNull(displayed)
+        assertTrue(displayed!!.latitude > first.coordinates.latitude)
+        assertTrue(displayed.latitude < next.coordinates.latitude)
+    }
 }
 
 private class FakeExplorationRepository : ExplorationRepository {

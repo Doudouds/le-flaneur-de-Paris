@@ -8,6 +8,7 @@ import fr.parisfogofwar.domain.model.*
 import fr.parisfogofwar.domain.repository.LocationRepository
 import fr.parisfogofwar.domain.repository.MonumentRepository
 import fr.parisfogofwar.domain.usecase.*
+import fr.parisfogofwar.data.image.MonumentImageResolver
 import fr.parisfogofwar.location.BackgroundLocationController
 import fr.parisfogofwar.map.OfflineMapRepository
 import fr.parisfogofwar.notifications.DiscoveryNotificationHelper
@@ -42,6 +43,7 @@ class AppViewModel @Inject constructor(
     private val discoverCurrentCell: DiscoverCurrentCellUseCase,
     private val resetProgressUseCase: ResetProgressUseCase,
     private val offlineMapRepository: OfflineMapRepository,
+    private val monumentImageResolver: MonumentImageResolver,
     private val discoveryNotificationHelper: DiscoveryNotificationHelper,
     private val backgroundLocationController: BackgroundLocationController,
 ) : ViewModel() {
@@ -52,6 +54,8 @@ class AppViewModel @Inject constructor(
     val offlineMapState: StateFlow<fr.parisfogofwar.map.OfflineMapState> = offlineMapRepository.state
     private var locationJob: Job? = null
     private var observedMonumentIds: Set<String>? = null
+    private val imageLookupsStarted = mutableSetOf<String>()
+    private val locationDisplayFilter = LocationDisplayFilter()
 
     init {
         backgroundLocationController.startIfEnabled()
@@ -95,7 +99,6 @@ class AppViewModel @Inject constructor(
         if (locationJob != null) return
         locationJob = viewModelScope.launch {
             locationRepository.locations().collect { location ->
-                _uiState.update { it.copy(currentLocation = location.coordinates) }
                 when (val result = discoverCurrentCell(location)) {
                     is CellDiscoveryResult.NewlyDiscovered -> Unit
                     // Ignore imprecise fixes silently. They must not block the user
@@ -103,6 +106,9 @@ class AppViewModel @Inject constructor(
                     CellDiscoveryResult.AccuracyTooLow -> Unit
                     CellDiscoveryResult.OutsideGameArea -> showMessage("Vous êtes en dehors de la zone d’exploration.")
                     CellDiscoveryResult.InvalidLocation, is CellDiscoveryResult.AlreadyDiscovered -> Unit
+                }
+                locationDisplayFilter.accept(location)?.let { displayedLocation ->
+                    _uiState.update { it.copy(currentLocation = displayedLocation) }
                 }
             }
         }
@@ -115,6 +121,15 @@ class AppViewModel @Inject constructor(
         }
         backgroundLocationController.setEnabled(enabled)
         _uiState.update { it.copy(backgroundTrackingEnabled = enabled) }
+    }
+
+    fun toggleBackgroundTrackingFromMap() {
+        val enabled = !_uiState.value.backgroundTrackingEnabled
+        val previousState = _uiState.value.backgroundTrackingEnabled
+        setBackgroundTrackingEnabled(enabled)
+        if (_uiState.value.backgroundTrackingEnabled != previousState) {
+            showMessage(if (enabled) "Suivi en arrière-plan actif" else "Suivi en arrière-plan inactif")
+        }
     }
 
     fun simulateDiscovery(location: LatLng) {
@@ -138,6 +153,13 @@ class AppViewModel @Inject constructor(
 
     fun focusMonument(monument: Monument) {
         _uiState.update { it.copy(focusLocation = LatLng(monument.latitude, monument.longitude)) }
+    }
+
+    fun ensureMonumentImage(monument: Monument) {
+        if (monument.imageLicense != null || !imageLookupsStarted.add(monument.id)) return
+        viewModelScope.launch {
+            runCatching { monumentImageResolver.ensureImage(monument) }
+        }
     }
 
     fun clearFocusLocation() { _uiState.update { it.copy(focusLocation = null) } }

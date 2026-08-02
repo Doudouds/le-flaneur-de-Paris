@@ -20,6 +20,12 @@ private data class MonumentAsset(
     val category: String? = null,
     val description: String? = null,
     val imageUrl: String? = null,
+    val imagePageUrl: String? = null,
+    val imageAuthor: String? = null,
+    val imageLicense: String? = null,
+    val imageLicenseUrl: String? = null,
+    val imageSource: String? = null,
+    val imageLookupCompleted: Boolean = false,
     val merimeeReference: String? = null,
     val osmId: String? = null,
 )
@@ -33,7 +39,6 @@ class RoomMonumentRepository(
     private val arrondissementResolver = ParisArrondissementResolver(context)
 
     override suspend fun ensureCatalogImported() {
-        if (dao.count() > 0) return
         val entries = context.assets.open("paris_monuments.json").bufferedReader().use { reader ->
             json.decodeFromString<List<MonumentAsset>>(reader.readText())
         }
@@ -49,14 +54,22 @@ class RoomMonumentRepository(
                 longitude = item.longitude,
                 category = item.category?.takeIf(String::isNotBlank),
                 description = item.description?.takeIf(String::isNotBlank),
-                imageUrl = item.imageUrl?.takeIf(String::isNotBlank),
+                // Legacy imports contained unverified OSM image URLs. Only keep
+                // an image when its reusable license metadata is present.
+                imageUrl = item.imageUrl?.takeIf { item.imageLicense != null && it.isNotBlank() },
+                imagePageUrl = item.imagePageUrl?.takeIf(String::isNotBlank),
+                imageAuthor = item.imageAuthor?.takeIf(String::isNotBlank),
+                imageLicense = item.imageLicense?.takeIf(String::isNotBlank),
+                imageLicenseUrl = item.imageLicenseUrl?.takeIf(String::isNotBlank),
+                imageSource = item.imageSource?.takeIf(String::isNotBlank),
+                imageLookupCompleted = item.imageLookupCompleted,
                 merimeeReference = item.merimeeReference?.takeIf(String::isNotBlank),
                 osmId = item.osmId?.takeIf(String::isNotBlank),
                 gridX = cell.x,
                 gridY = cell.y,
             )
         }.distinctBy { it.id }
-        dao.insertAll(entities)
+        if (dao.count() == 0) dao.insertAll(entities)
     }
 
     override fun observeRevealedMonuments(): Flow<List<Monument>> = dao.observeRevealed().map { list ->
@@ -76,6 +89,8 @@ class RoomMonumentRepository(
     private fun MonumentEntity.toDomain(discoveredAtEpochMillis: Long? = null) = Monument(
         id = id, name = name, latitude = latitude, longitude = longitude,
         category = category, description = description, imageUrl = imageUrl,
+        imagePageUrl = imagePageUrl, imageAuthor = imageAuthor, imageLicense = imageLicense,
+        imageLicenseUrl = imageLicenseUrl, imageSource = imageSource,
         merimeeReference = merimeeReference, osmId = osmId,
         cellId = GridCellId(gridX, gridY),
         discoveredAtEpochMillis = discoveredAtEpochMillis,

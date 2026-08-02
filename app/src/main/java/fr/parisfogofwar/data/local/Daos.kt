@@ -23,8 +23,32 @@ interface MonumentDao {
     @Query("SELECT * FROM monuments")
     fun observeAll(): Flow<List<MonumentEntity>>
 
+    @Query("SELECT * FROM monuments WHERE id = :monumentId LIMIT 1")
+    suspend fun findById(monumentId: String): MonumentEntity?
+
     @Query("SELECT DISTINCT gridX, gridY FROM monuments")
     fun observeMonumentCells(): Flow<List<MonumentCellRow>>
+
+    @Query("""
+        UPDATE monuments SET
+            imageUrl = :imageUrl,
+            imagePageUrl = :imagePageUrl,
+            imageAuthor = :imageAuthor,
+            imageLicense = :imageLicense,
+            imageLicenseUrl = :imageLicenseUrl,
+            imageSource = :imageSource,
+            imageLookupCompleted = 1
+        WHERE id = :monumentId
+    """)
+    suspend fun updateImage(
+        monumentId: String,
+        imageUrl: String?,
+        imagePageUrl: String?,
+        imageAuthor: String?,
+        imageLicense: String?,
+        imageLicenseUrl: String?,
+        imageSource: String?,
+    )
 }
 
 @Dao

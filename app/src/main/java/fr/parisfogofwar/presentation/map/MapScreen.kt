@@ -2,14 +2,18 @@ package fr.parisfogofwar.presentation.map
 
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.RectF
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -23,6 +27,7 @@ import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng as MapLatLng
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
@@ -43,6 +48,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,22 +57,31 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
     val context = LocalContext.current
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapReady by remember { mutableStateOf(false) }
-    var selectedMonument by remember { mutableStateOf<Monument?>(null) }
+    var selectedMonumentId by remember { mutableStateOf<String?>(null) }
+    val selectedMonument = selectedMonumentId?.let { id -> state.revealedMonuments.firstOrNull { it.id == id } }
     var showWelcome by remember { mutableStateOf(false) }
     var showMonumentHints by remember { mutableStateOf(false) }
     var initialCameraApplied by remember { mutableStateOf(false) }
     val preferences = remember { context.getSharedPreferences("onboarding", 0) }
     val renderScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val latestRevealedMonuments by rememberUpdatedState(state.revealedMonuments)
 
     LaunchedEffect(Unit) { showWelcome = !preferences.getBoolean("seen", false) }
+
+    LaunchedEffect(state.message) {
+        state.message?.let { message ->
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            viewModel.clearMessage()
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = {
                 MapLibre.getInstance(it)
-                MapView(it).also { view ->
+                MapView(it, MapLibreMapOptions.createFromAttributes(it).textureMode(true)).also { view ->
                     view.onCreate(null)
                     view.onStart()
                     view.onResume()
@@ -91,10 +107,20 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                                 true
                             }
                             mapInstance.addOnMapClickListener { point ->
-                                val features = mapInstance.queryRenderedFeatures(mapInstance.projection.toScreenLocation(point), MapConfig.MONUMENT_LAYER_ID)
+                                val screenPoint = mapInstance.projection.toScreenLocation(point)
+                                val touchRadiusPx = 24f * context.resources.displayMetrics.density
+                                val features = mapInstance.queryRenderedFeatures(
+                                    RectF(
+                                        screenPoint.x - touchRadiusPx,
+                                        screenPoint.y - touchRadiusPx,
+                                        screenPoint.x + touchRadiusPx,
+                                        screenPoint.y + touchRadiusPx,
+                                    ),
+                                    MapConfig.MONUMENT_LAYER_ID,
+                                )
                                 val id = features.firstOrNull()?.getProperty("id")?.asString
-                                selectedMonument = latestRevealedMonuments.firstOrNull { it.id == id }
-                                selectedMonument != null
+                                selectedMonumentId = latestRevealedMonuments.firstOrNull { it.id == id }?.id
+                                selectedMonumentId != null
                             }
                         }
                     }
@@ -157,7 +183,28 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
             horizontalAlignment = Alignment.End,
         ) {
             SmallFloatingActionButton(
-                onClick = { showMonumentHints = !showMonumentHints },
+                onClick = viewModel::toggleBackgroundTrackingFromMap,
+                containerColor = if (state.backgroundTrackingEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+            ) {
+                Icon(
+                    if (state.backgroundTrackingEnabled) Icons.Default.LocationOn else Icons.Default.LocationOff,
+                    contentDescription = if (state.backgroundTrackingEnabled) "Désactiver le suivi en arrière-plan" else "Activer le suivi en arrière-plan",
+                )
+            }
+            SmallFloatingActionButton(
+                onClick = {
+                    showMonumentHints = !showMonumentHints
+                    renderScope.launch {
+                        snackbarHostState.showSnackbar(
+                            if (showMonumentHints) {
+                                "Les indices des monuments restant à découvrir sont visibles sur la carte."
+                            } else {
+                                "Les indices des monuments restant à découvrir sont masqués sur la carte."
+                            },
+                            duration = SnackbarDuration.Short,
+                        )
+                    }
+                },
                 containerColor = if (showMonumentHints) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
             ) {
                 Icon(
@@ -206,9 +253,10 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
             Text("© OpenStreetMap contributors", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
         }
 
-        state.message?.let { message ->
-            Snackbar(Modifier.align(Alignment.BottomCenter).padding(16.dp), action = { TextButton(onClick = viewModel::clearMessage) { Text("OK") } }) { Text(message) }
-        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+        )
     }
 
     if (showWelcome) {
@@ -232,8 +280,10 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
     }
 
     selectedMonument?.let { monument ->
-        ModalBottomSheet(onDismissRequest = { selectedMonument = null }) {
+        LaunchedEffect(monument.id, monument.imageUrl) { viewModel.ensureMonumentImage(monument) }
+        ModalBottomSheet(onDismissRequest = { selectedMonumentId = null }) {
             Column(Modifier.padding(24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MonumentImage(monument)
                 Text(monument.name, style = MaterialTheme.typography.headlineSmall)
                 monument.category
                     ?.takeIf { category -> category.isNotBlank() && category.any(Char::isLetter) }
@@ -242,17 +292,57 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                 monument.merimeeReference?.let { Text("Référence Mérimée : $it") }
                 monument.osmId?.let { Text("OpenStreetMap : $it") }
                 Text("${monument.latitude}, ${monument.longitude}")
+                monument.imageLicense?.let { license ->
+                    Text(
+                        buildString {
+                            append("Photo : ")
+                            monument.imageAuthor?.takeIf(String::isNotBlank)?.let { append(it).append(" — ") }
+                            append(license)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = {
                         map?.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(MapLatLng(monument.latitude, monument.longitude)).zoom(17.0).build()))
-                        selectedMonument = null
+                        selectedMonumentId = null
                     }) { Text("Centrer sur le monument") }
                     TextButton(onClick = {
                         val query = URLEncoder.encode(monument.name, "UTF-8")
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://fr.wikipedia.org/w/index.php?search=$query")))
                     }) { Text("Wikipédia") }
+                    monument.imagePageUrl?.let { pageUrl ->
+                        TextButton(onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
+                        }) { Text("Source de l’image") }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MonumentImage(monument: Monument) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(190.dp)
+            .clip(RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (monument.imageUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(monument.imageUrl)
+                    .diskCacheKey("monument-${monument.id}")
+                    .build(),
+                contentDescription = "Photo de ${monument.name}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Text("Image indisponible", style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -329,7 +419,7 @@ private object MapRenderer {
         }
         monumentSource.setGeoJson(FeatureCollection.fromFeatures(monumentFeatures))
         val monumentHintFeatures = if (showMonumentHints) {
-            state.allMonumentCells.map { cell ->
+            state.allMonumentCells.filter { it !in state.discoveredCells }.map { cell ->
                 val bounds = cell.toWebMercatorBounds()
                 val center = MercatorPoint(
                     (bounds.minX + bounds.maxX) / 2.0,

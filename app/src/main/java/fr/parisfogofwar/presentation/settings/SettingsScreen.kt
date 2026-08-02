@@ -11,8 +11,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -21,6 +25,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import fr.parisfogofwar.BuildConfig
 import fr.parisfogofwar.domain.model.ExplorationStatistics
 import fr.parisfogofwar.presentation.AppViewModel
 import androidx.compose.material3.LinearProgressIndicator
@@ -68,6 +73,7 @@ fun SettingsScreen(statistics: ExplorationStatistics, viewModel: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("Réglages", style = MaterialTheme.typography.headlineMedium)
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
         Text("Notifications", style = MaterialTheme.typography.titleLarge)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (notificationsAllowed) {
@@ -81,6 +87,7 @@ fun SettingsScreen(statistics: ExplorationStatistics, viewModel: AppViewModel) {
         } else {
             Text("Les notifications de nouveaux monuments sont disponibles sur cet appareil.")
         }
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
         Text("Suivi en arrière-plan", style = MaterialTheme.typography.titleLarge)
         Text("L'application peut continuer à dévoiler la carte lorsque l'écran est verrouillé. Android affichera une notification permanente et la batterie sera davantage sollicitée.")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !backgroundLocationAllowed) {
@@ -121,6 +128,51 @@ fun SettingsScreen(statistics: ExplorationStatistics, viewModel: AppViewModel) {
         if (appState.backgroundTrackingEnabled) {
             Text("Pour arrêter le suivi, désactivez ce bouton.", style = MaterialTheme.typography.bodySmall)
         }
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
+        Text("Version", style = MaterialTheme.typography.titleLarge)
+        Text("Version de l’application : ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyLarge)
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
+        Text("Aide", style = MaterialTheme.typography.titleLarge)
+        Text("Voici comment lire les informations d’un monument dans l’application.")
+        Card(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Tour Eiffel", style = MaterialTheme.typography.headlineSmall)
+                Text("Monument historique", style = MaterialTheme.typography.labelLarge)
+                Text("Un monument découvert s’affiche ainsi dans sa fiche :")
+                HorizontalDivider()
+                HelpDetail(
+                    label = "Référence Mérimée",
+                    value = "PA00088801",
+                    explanation = "L’identifiant officiel de la fiche du monument dans la base patrimoniale Mérimée.",
+                )
+                HelpDetail(
+                    label = "Coordonnées GPS",
+                    value = "48.858261, 2.294504",
+                    explanation = "La latitude et la longitude permettent de retrouver précisément le monument sur la carte.",
+                )
+                HelpDetail(
+                    label = "OpenStreetMap",
+                    value = "way/5013364",
+                    explanation = "La référence de l’objet correspondant dans la base cartographique OpenStreetMap.",
+                )
+                Text("Selon les monuments, une description, une photo ou des liens complémentaires peuvent aussi apparaître.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Text("Commandes de la carte", style = MaterialTheme.typography.titleMedium)
+        HelpIconDetail(
+            icon = Icons.Default.LocationOn,
+            label = "Suivi GPS en arrière-plan",
+            explanation = "Active ou désactive le suivi en arrière-plan. Quand il est actif, l’application continue à vous suivre même si l’écran est verrouillé.",
+        )
+        HelpIconDetail(
+            icon = Icons.Default.Visibility,
+            label = "Indices de monuments",
+            explanation = "Affiche ou masque les petits points des secteurs encore non découverts qui contiennent des monuments.",
+        )
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
         Text("Carte hors connexion", style = MaterialTheme.typography.titleLarge)
         Text("Téléchargez la zone de Paris en Wi-Fi pour utiliser la carte sans connexion. Les monuments et la progression sont déjà stockés localement.")
         when {
@@ -136,7 +188,7 @@ fun SettingsScreen(statistics: ExplorationStatistics, viewModel: AppViewModel) {
         }
         offlineMapState.errorMessage?.let { Text("Erreur : $it", color = MaterialTheme.colorScheme.error) }
         OutlinedButton(onClick = { showConfirm = true }) { Text("Supprimer la progression") }
-        HorizontalDivider()
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
         Text("Crédits et licences", style = MaterialTheme.typography.titleLarge)
         Text("© OpenStreetMap contributors — données ODbL")
         Text("Carte : MapLibre Native. Tuiles : fournisseur de style configuré pour le développement.")
@@ -151,6 +203,33 @@ fun SettingsScreen(statistics: ExplorationStatistics, viewModel: AppViewModel) {
             confirmButton = { TextButton(onClick = { viewModel.resetProgress(); showConfirm = false }) { Text("Supprimer") } },
             dismissButton = { TextButton(onClick = { showConfirm = false }) { Text("Annuler") } },
         )
+    }
+}
+
+@Composable
+private fun HelpDetail(label: String, value: String, explanation: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        Text(value, style = MaterialTheme.typography.bodyLarge)
+        Text(explanation, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun HelpIconDetail(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    explanation: String,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(explanation, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 

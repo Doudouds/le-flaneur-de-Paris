@@ -53,6 +53,7 @@ fun ParisApp(viewModel: AppViewModel) {
                 CollectionScreen(
                     monuments = state.revealedMonuments,
                     arrondissementTotals = state.arrondissementTotals,
+                    onImageNeeded = viewModel::ensureMonumentImage,
                     onLocate = { monument ->
                         viewModel.focusMonument(monument)
                         navController.navigate("map") { launchSingleTop = true }

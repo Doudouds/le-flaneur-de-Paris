@@ -46,10 +46,25 @@ object AppModule {
         }
     }
 
+    private val imageMetadataMigration = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE monuments ADD COLUMN imagePageUrl TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN imageAuthor TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN imageLicense TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN imageLicenseUrl TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN imageSource TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN imageLookupCompleted INTEGER NOT NULL DEFAULT 0")
+            // Older catalogues carried OSM/Google Photos URLs without reusable
+            // license metadata. Do not show those links after the migration.
+            database.execSQL("UPDATE monuments SET imageUrl = NULL")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "paris_fog_of_war.db")
             .addMigrations(gridMigration100mTo200m)
+            .addMigrations(imageMetadataMigration)
             .build()
 
     @Provides fun provideMonumentDao(database: AppDatabase) = database.monumentDao()
