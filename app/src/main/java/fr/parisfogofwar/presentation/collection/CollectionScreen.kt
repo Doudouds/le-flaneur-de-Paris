@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -26,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import fr.parisfogofwar.domain.model.Monument
-import java.net.URLEncoder
+import fr.parisfogofwar.presentation.MonumentDetailsBottomSheet
 
 @Composable
 fun CollectionScreen(
@@ -49,6 +51,8 @@ fun CollectionScreen(
         )
     }
     val discoveredByArrondissement = monuments.groupingBy { it.arrondissement }.eachCount()
+    var selectedMonumentId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedMonument = selectedMonumentId?.let { id -> monuments.firstOrNull { it.id == id } }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("Collection", style = MaterialTheme.typography.headlineMedium)
         Text("Les monuments apparaissent après la découverte de leur secteur.", modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
@@ -99,18 +103,34 @@ fun CollectionScreen(
                             }
                         }
                     }
-                    MonumentRow(monument, onImageNeeded, onLocate)
+                    MonumentRow(monument, onImageNeeded, onLocate) { selectedMonumentId = monument.id }
                 }
             }
         }
     }
+
+    selectedMonument?.let { monument ->
+        MonumentDetailsBottomSheet(
+            monument = monument,
+            onDismiss = { selectedMonumentId = null },
+            onLocate = {
+                selectedMonumentId = null
+                onLocate(monument)
+            },
+        )
+    }
 }
 
 @Composable
-private fun MonumentRow(monument: Monument, onImageNeeded: (Monument) -> Unit, onLocate: (Monument) -> Unit) {
+private fun MonumentRow(
+    monument: Monument,
+    onImageNeeded: (Monument) -> Unit,
+    onLocate: (Monument) -> Unit,
+    onClick: () -> Unit,
+) {
     val context = LocalContext.current
     androidx.compose.runtime.LaunchedEffect(monument.id, monument.imageUrl) { onImageNeeded(monument) }
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MonumentThumbnail(monument)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -134,9 +154,9 @@ private fun MonumentRow(monument: Monument, onImageNeeded: (Monument) -> Unit, o
                     }
                     TextButton(
                         onClick = {
-                            val query = URLEncoder.encode(monument.name, "UTF-8")
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://fr.wikipedia.org/w/index.php?search=$query"))
-                            context.startActivity(intent)
+                            val wikipediaUrl = monument.wikipediaUrl?.takeIf(String::isNotBlank)
+                                ?: "https://fr.wikipedia.org/w/index.php?search=${Uri.encode(monument.name)}"
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(wikipediaUrl)))
                         },
                         contentPadding = PaddingValues(horizontal = 8.dp),
                     ) {
@@ -166,7 +186,7 @@ private fun MonumentThumbnail(monument: Monument) {
                     .build(),
                 contentDescription = "Photo de ${monument.name}",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
             )
         } else {
             Icon(Icons.Default.BrokenImage, contentDescription = "Image indisponible", tint = MaterialTheme.colorScheme.primary)

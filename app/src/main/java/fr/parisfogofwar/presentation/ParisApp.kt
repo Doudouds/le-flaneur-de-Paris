@@ -22,7 +22,11 @@ import fr.parisfogofwar.presentation.statistics.StatisticsScreen
 private data class Destination(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 @Composable
-fun ParisApp(viewModel: AppViewModel) {
+fun ParisApp(
+    viewModel: AppViewModel,
+    notificationMonumentId: String? = null,
+    onNotificationHandled: () -> Unit = {},
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val destinations = listOf(
@@ -31,6 +35,14 @@ fun ParisApp(viewModel: AppViewModel) {
         Destination("statistics", "Stats", Icons.Default.BarChart),
         Destination("settings", "Réglages", Icons.Default.Settings),
     )
+
+    LaunchedEffect(notificationMonumentId, state.revealedMonuments) {
+        val id = notificationMonumentId ?: return@LaunchedEffect
+        val monument = state.revealedMonuments.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        navController.navigate("map") { launchSingleTop = true; restoreState = true }
+        viewModel.openMonument(monument)
+        onNotificationHandled()
+    }
 
     Scaffold(
         bottomBar = {

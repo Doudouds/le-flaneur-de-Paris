@@ -50,6 +50,7 @@ class DiscoveryNotificationHelper @Inject constructor(
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_MONUMENT_ID, monument.id)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -91,7 +92,8 @@ class DiscoveryNotificationHelper @Inject constructor(
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private companion object {
+    companion object {
+        const val EXTRA_MONUMENT_ID = "fr.parisfogofwar.extra.DISCOVERY_MONUMENT_ID"
         const val CHANNEL_ID = "monument-discoveries"
         const val TRACKING_CHANNEL_ID = "location-tracking"
         const val TRACKING_PENDING_INTENT_REQUEST_CODE = 2001

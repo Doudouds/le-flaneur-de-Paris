@@ -60,11 +60,25 @@ object AppModule {
         }
     }
 
+    private val wikipediaUrlMigration = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE monuments ADD COLUMN wikipediaUrl TEXT")
+        }
+    }
+
+    private val popHistoricalDescriptionMigration = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE monuments ADD COLUMN popHistoricalDescription TEXT")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "paris_fog_of_war.db")
             .addMigrations(gridMigration100mTo200m)
             .addMigrations(imageMetadataMigration)
+            .addMigrations(wikipediaUrlMigration)
+            .addMigrations(popHistoricalDescriptionMigration)
             .build()
 
     @Provides fun provideMonumentDao(database: AppDatabase) = database.monumentDao()

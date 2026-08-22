@@ -19,6 +19,7 @@ private data class MonumentAsset(
     val longitude: Double,
     val category: String? = null,
     val description: String? = null,
+    val popHistoricalDescription: String? = null,
     val imageUrl: String? = null,
     val imagePageUrl: String? = null,
     val imageAuthor: String? = null,
@@ -27,6 +28,7 @@ private data class MonumentAsset(
     val imageSource: String? = null,
     val imageLookupCompleted: Boolean = false,
     val merimeeReference: String? = null,
+    val wikipediaUrl: String? = null,
     val osmId: String? = null,
 )
 
@@ -54,6 +56,7 @@ class RoomMonumentRepository(
                 longitude = item.longitude,
                 category = item.category?.takeIf(String::isNotBlank),
                 description = item.description?.takeIf(String::isNotBlank),
+                popHistoricalDescription = item.popHistoricalDescription?.takeIf(String::isNotBlank),
                 // Legacy imports contained unverified OSM image URLs. Only keep
                 // an image when its reusable license metadata is present.
                 imageUrl = item.imageUrl?.takeIf { item.imageLicense != null && it.isNotBlank() },
@@ -64,12 +67,23 @@ class RoomMonumentRepository(
                 imageSource = item.imageSource?.takeIf(String::isNotBlank),
                 imageLookupCompleted = item.imageLookupCompleted,
                 merimeeReference = item.merimeeReference?.takeIf(String::isNotBlank),
+                wikipediaUrl = item.wikipediaUrl?.takeIf(String::isNotBlank),
                 osmId = item.osmId?.takeIf(String::isNotBlank),
                 gridX = cell.x,
                 gridY = cell.y,
             )
         }.distinctBy { it.id }
-        if (dao.count() == 0) dao.insertAll(entities)
+        if (dao.count() == 0) {
+            dao.insertAll(entities)
+        } else {
+            entities.forEach { monument ->
+                dao.updateCatalogMetadata(
+                    monumentId = monument.id,
+                    wikipediaUrl = monument.wikipediaUrl,
+                    popHistoricalDescription = monument.popHistoricalDescription,
+                )
+            }
+        }
     }
 
     override fun observeRevealedMonuments(): Flow<List<Monument>> = dao.observeRevealed().map { list ->
@@ -88,13 +102,15 @@ class RoomMonumentRepository(
 
     private fun MonumentEntity.toDomain(discoveredAtEpochMillis: Long? = null) = Monument(
         id = id, name = name, latitude = latitude, longitude = longitude,
-        category = category, description = description, imageUrl = imageUrl,
+        category = category, description = description, popHistoricalDescription = popHistoricalDescription,
+        imageUrl = imageUrl,
         imagePageUrl = imagePageUrl, imageAuthor = imageAuthor, imageLicense = imageLicense,
         imageLicenseUrl = imageLicenseUrl, imageSource = imageSource,
         merimeeReference = merimeeReference, osmId = osmId,
         cellId = GridCellId(gridX, gridY),
         discoveredAtEpochMillis = discoveredAtEpochMillis,
         arrondissement = arrondissementResolver.find(latitude, longitude),
+        wikipediaUrl = wikipediaUrl,
     )
 }
 

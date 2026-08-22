@@ -49,6 +49,13 @@ interface MonumentDao {
         imageLicenseUrl: String?,
         imageSource: String?,
     )
+
+    @Query("UPDATE monuments SET wikipediaUrl = :wikipediaUrl, popHistoricalDescription = :popHistoricalDescription WHERE id = :monumentId")
+    suspend fun updateCatalogMetadata(
+        monumentId: String,
+        wikipediaUrl: String?,
+        popHistoricalDescription: String?,
+    )
 }
 
 @Dao

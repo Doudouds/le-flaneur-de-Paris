@@ -31,6 +31,7 @@ data class AppUiState(
     val statistics: ExplorationStatistics = ExplorationStatistics(),
     val message: String? = null,
     val focusLocation: LatLng? = null,
+    val openMonumentId: String? = null,
 )
 
 @HiltViewModel
@@ -154,6 +155,17 @@ class AppViewModel @Inject constructor(
     fun focusMonument(monument: Monument) {
         _uiState.update { it.copy(focusLocation = LatLng(monument.latitude, monument.longitude)) }
     }
+
+    fun openMonument(monument: Monument) {
+        _uiState.update {
+            it.copy(
+                focusLocation = LatLng(monument.latitude, monument.longitude),
+                openMonumentId = monument.id,
+            )
+        }
+    }
+
+    fun clearOpenMonument() { _uiState.update { it.copy(openMonumentId = null) } }
 
     fun ensureMonumentImage(monument: Monument) {
         if (monument.imageLicense != null || !imageLookupsStarted.add(monument.id)) return

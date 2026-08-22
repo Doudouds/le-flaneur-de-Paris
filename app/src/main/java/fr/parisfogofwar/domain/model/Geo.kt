@@ -144,6 +144,7 @@ data class Monument(
     val longitude: Double,
     val category: String?,
     val description: String?,
+    val popHistoricalDescription: String? = null,
     val imageUrl: String?,
     val imagePageUrl: String?,
     val imageAuthor: String?,
@@ -155,6 +156,7 @@ data class Monument(
     val cellId: GridCellId,
     val discoveredAtEpochMillis: Long? = null,
     val arrondissement: Int? = null,
+    val wikipediaUrl: String? = null,
 )
 
 data class ExplorationStatistics(

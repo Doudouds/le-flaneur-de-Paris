@@ -19,9 +19,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Finds a reusable Commons image only when the file metadata exposes a
- * public-domain, CC0, CC BY or CC BY-SA license. The result is persisted in
- * Room so the same file is not looked up again on every screen visit.
+ * Finds a reusable image from Wikimedia Commons or POP only when its metadata
+ * exposes an explicit reusable license. The result is persisted in Room so the
+ * same file is not looked up again on every screen visit.
  */
 @Singleton
 class MonumentImageResolver @Inject constructor(
@@ -34,7 +34,7 @@ class MonumentImageResolver @Inject constructor(
         if (current.imageLookupCompleted && current.imageUrl != null) return
 
         val image = withContext(Dispatchers.IO) {
-            CommonsClient().find(monument)
+            CommonsClient().find(monument) ?: PopClient().find(monument)
         }
         dao.updateImage(
             monumentId = monument.id,
@@ -48,7 +48,7 @@ class MonumentImageResolver @Inject constructor(
     }
 }
 
-private data class CommonsImage(
+private data class ResolvedImage(
     val thumbnailUrl: String,
     val pageUrl: String,
     val author: String?,
@@ -59,7 +59,7 @@ private data class CommonsImage(
 )
 
 private class CommonsClient {
-    fun find(monument: Monument): CommonsImage? {
+    fun find(monument: Monument): ResolvedImage? {
         val reference = monument.merimeeReference?.trim().orEmpty()
         if (reference.isNotBlank()) {
             val exact = request(
@@ -98,7 +98,7 @@ private class CommonsClient {
         return "https://commons.wikimedia.org/w/api.php?$query"
     }
 
-    private fun request(url: String): List<CommonsImage> {
+    private fun request(url: String): List<ResolvedImage> {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15_000
@@ -118,9 +118,9 @@ private class CommonsClient {
         }
     }
 
-    private fun parseImages(root: JSONObject): List<CommonsImage> {
+    private fun parseImages(root: JSONObject): List<ResolvedImage> {
         val pages = root.optJSONObject("query")?.optJSONObject("pages") ?: return emptyList()
-        val images = mutableListOf<CommonsImage>()
+        val images = mutableListOf<ResolvedImage>()
         val keys = pages.keys()
         while (keys.hasNext()) {
             val page = pages.optJSONObject(keys.next()) ?: continue
@@ -137,7 +137,7 @@ private class CommonsClient {
             val author = metadataText(metadata, "Artist")
                 ?: metadataText(metadata, "Credit")
             val description = metadataText(metadata, "ImageDescription").orEmpty()
-            images += CommonsImage(
+            images += ResolvedImage(
                 thumbnailUrl = thumbnailUrl.toHttps(),
                 pageUrl = "https://commons.wikimedia.org/wiki/${Uri.encode(title.replace(' ', '_'))}",
                 author = author,
@@ -159,7 +159,7 @@ private class CommonsClient {
     }
 
     @VisibleForTesting
-    internal fun candidateMatchesMonument(candidate: CommonsImage, monumentName: String): Boolean {
+    internal fun candidateMatchesMonument(candidate: ResolvedImage, monumentName: String): Boolean {
         val haystack = normalize(candidate.searchText + " " + candidate.author.orEmpty())
         val name = normalize(monumentName)
         if (name.length >= 8 && haystack.contains(name)) return true
@@ -197,6 +197,24 @@ private class CommonsClient {
                 normalized.matches(Regex(".*\\bcc[- ]?by(?:[- ]?sa)?\\b.*"))
         }
 
+        @VisibleForTesting
+        internal fun isReusablePopRights(value: String): Boolean {
+            val normalized = value.lowercase(Locale.ROOT)
+            if (normalized.isBlank()) return false
+            return listOf(
+                "public domain",
+                "domaine public",
+                "cc0",
+                "cc by",
+                "cc-by",
+                "cc by-sa",
+                "cc-by-sa",
+                "creative commons attribution",
+                "licence ouverte",
+                "open licence",
+            ).any(normalized::contains)
+        }
+
         private fun licenseUrl(value: String): String? {
             val normalized = value.lowercase(Locale.ROOT)
             if (normalized.contains("cc0")) return "https://creativecommons.org/publicdomain/zero/1.0/"
@@ -204,5 +222,66 @@ private class CommonsClient {
             val version = Regex("(\\d+(?:\\.\\d+)?)").find(normalized)?.groupValues?.get(1) ?: return null
             return "https://creativecommons.org/licenses/${if (sa) "by-sa" else "by"}/$version/"
         }
+    }
+}
+
+private class PopClient {
+    fun find(monument: Monument): ResolvedImage? {
+        val reference = monument.merimeeReference?.trim().orEmpty()
+        if (reference.isBlank()) return null
+
+        val noticeUrl = "https://pop.culture.gouv.fr/notice/merimee/${Uri.encode(reference)}"
+        val apiUrl = "https://api.pop.culture.gouv.fr/notices/merimee/${Uri.encode(reference)}/public"
+        val notice = request(apiUrl)?.optJSONObject("notice") ?: return null
+        val images = notice.optJSONArray("MEMOIRE") ?: return null
+
+        for (index in 0 until images.length()) {
+            val image = images.optJSONObject(index) ?: continue
+            val rights = image.optString("copy").trim()
+            if (!CommonsClient.isReusablePopRights(rights)) continue
+            val imagePath = image.optString("url").trim()
+            if (imagePath.isBlank()) continue
+
+            return ResolvedImage(
+                thumbnailUrl = imagePath.toPopImageUrl(),
+                pageUrl = noticeUrl,
+                author = null,
+                license = rights,
+                licenseUrl = null,
+                searchText = "${image.optString("name")} $reference",
+                source = "POP — Plateforme ouverte du patrimoine",
+            )
+        }
+        return null
+    }
+
+    private fun request(url: String): JSONObject? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "LeFlaneurDeParis/0.1 (heritage image lookup)")
+        }
+        return try {
+            if (connection.responseCode !in 200..299) return null
+            val body = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
+            JSONObject(body)
+        } catch (error: Exception) {
+            Log.w("MonumentImageResolver", "POP image lookup failed", error)
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun String.toPopImageUrl(): String = if (startsWith("http://") || startsWith("https://")) {
+        if (startsWith("http://")) replaceFirst("http://", "https://") else this
+    } else {
+        "$POP_BUCKET_URL${trimStart('/')}"
+    }
+
+    private companion object {
+        const val POP_BUCKET_URL = "https://popcorn-prd-perf-assets.s3.gra.io.cloud.ovh.net/"
     }
 }

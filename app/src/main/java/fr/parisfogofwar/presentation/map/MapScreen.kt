@@ -1,19 +1,14 @@
 package fr.parisfogofwar.presentation.map
 
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.RectF
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -47,9 +42,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.URLEncoder
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +65,14 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
         state.message?.let { message ->
             snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
             viewModel.clearMessage()
+        }
+    }
+
+    LaunchedEffect(state.openMonumentId, state.revealedMonuments) {
+        val id = state.openMonumentId ?: return@LaunchedEffect
+        if (state.revealedMonuments.any { it.id == id }) {
+            selectedMonumentId = id
+            viewModel.clearOpenMonument()
         }
     }
 
@@ -281,69 +281,17 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
 
     selectedMonument?.let { monument ->
         LaunchedEffect(monument.id, monument.imageUrl) { viewModel.ensureMonumentImage(monument) }
-        ModalBottomSheet(onDismissRequest = { selectedMonumentId = null }) {
-            Column(Modifier.padding(24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MonumentImage(monument)
-                Text(monument.name, style = MaterialTheme.typography.headlineSmall)
-                monument.category
-                    ?.takeIf { category -> category.isNotBlank() && category.any(Char::isLetter) }
-                    ?.let { category -> Text(category, style = MaterialTheme.typography.labelLarge) }
-                monument.description?.let { Text(it) }
-                monument.merimeeReference?.let { Text("Référence Mérimée : $it") }
-                monument.osmId?.let { Text("OpenStreetMap : $it") }
-                Text("${monument.latitude}, ${monument.longitude}")
-                monument.imageLicense?.let { license ->
-                    Text(
-                        buildString {
-                            append("Photo : ")
-                            monument.imageAuthor?.takeIf(String::isNotBlank)?.let { append(it).append(" — ") }
-                            append(license)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = {
-                        map?.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(MapLatLng(monument.latitude, monument.longitude)).zoom(17.0).build()))
-                        selectedMonumentId = null
-                    }) { Text("Centrer sur le monument") }
-                    TextButton(onClick = {
-                        val query = URLEncoder.encode(monument.name, "UTF-8")
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://fr.wikipedia.org/w/index.php?search=$query")))
-                    }) { Text("Wikipédia") }
-                    monument.imagePageUrl?.let { pageUrl ->
-                        TextButton(onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
-                        }) { Text("Source de l’image") }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MonumentImage(monument: Monument) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(190.dp)
-            .clip(RoundedCornerShape(16.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (monument.imageUrl != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(monument.imageUrl)
-                    .diskCacheKey("monument-${monument.id}")
-                    .build(),
-                contentDescription = "Photo de ${monument.name}",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Text("Image indisponible", style = MaterialTheme.typography.labelLarge)
-        }
+        MonumentDetailsBottomSheet(
+            monument = monument,
+            onDismiss = { selectedMonumentId = null },
+            onLocate = {
+                map?.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
+                    .target(MapLatLng(monument.latitude, monument.longitude))
+                    .zoom(17.0)
+                    .build()))
+                selectedMonumentId = null
+            },
+        )
     }
 }
 
