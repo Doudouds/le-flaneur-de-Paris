@@ -1,0 +1,68 @@
+{
+  "input": "C:\\Users\\edoua\\Downloads\\Immeubles protégés au titre des Monuments Historiques-Analyser_Merge_Heritage_FR_Merimee.byOSM.csv\\Immeubles protégés au titre des Monuments Historiques-Analyser_Merge_Heritage_FR_Merimee.byOSM.csv",
+  "output_directory": "C:\\Users\\edoua\\Documents\\paris-fog-of-war\\outputs\\heritage_enrichment",
+  "cache": "C:\\Users\\edoua\\Documents\\paris-fog-of-war\\outputs\\heritage_enrichment\\heritage_cache.sqlite3",
+  "mode": "online",
+  "total_monuments": 46381,
+  "associes_wikidata": 33435,
+  "associes_wikipedia_fr": 24024,
+  "disposant_d_une_frequentation_physique": 61,
+  "necessitant_verification": 1994,
+  "wikidata_requetes": 0,
+  "pageviews_requetes": 0,
+  "distribution": {
+    "importance_patrimoniale": {
+      "min": 0,
+      "max": 82,
+      "moyenne": 43.48,
+      "classes": {
+        "35-54": 33734,
+        "55-74": 11315,
+        "0-34": 1307,
+        "75-89": 25
+      }
+    },
+    "notoriete": {
+      "min": 0,
+      "max": 100,
+      "moyenne": 18.18,
+      "classes": {
+        "0-34": 43182,
+        "35-54": 2330,
+        "55-74": 728,
+        "75-89": 114,
+        "90-100": 27
+      }
+    },
+    "note_globale": {
+      "min": 0,
+      "max": 86,
+      "moyenne": 33.39,
+      "classes": {
+        "35-54": 17527,
+        "0-34": 27866,
+        "55-74": 972,
+        "75-89": 16
+      }
+    }
+  },
+  "etoiles": {
+    "reference": "paris",
+    "reference_monuments": 2062,
+    "thresholds": {
+      "une_etoile_max_exclusif": 41,
+      "deux_etoiles_minimum": 42,
+      "deux_etoiles_maximum_exclusif": 58,
+      "trois_etoiles_minimum": 58
+    },
+    "distribution": {
+      "1": 36029,
+      "2": 9730,
+      "3": 622
+    }
+  },
+  "source_description_pop": "C:\\Users\\edoua\\Documents\\paris-fog-of-war\\app\\src\\main\\assets\\paris_monuments.json",
+  "integrite_source": "vérifiée ci-dessous",
+  "lignes_comparees_integrite": 46381,
+  "problemes_integrite": []
+}

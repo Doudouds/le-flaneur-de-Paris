@@ -72,6 +72,28 @@ object AppModule {
         }
     }
 
+    private val interestRatingMigration = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE monuments ADD COLUMN interestScore INTEGER")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN interestPercentile INTEGER")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN stars INTEGER")
+        }
+    }
+
+    private val descriptionSourceMigration = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE monuments ADD COLUMN descriptionSource TEXT")
+        }
+    }
+
+    private val historicalMetadataMigration = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE monuments ADD COLUMN historicalDates TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN historicalPeriod TEXT")
+            database.execSQL("ALTER TABLE monuments ADD COLUMN protectionDates TEXT")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "paris_fog_of_war.db")
@@ -79,6 +101,9 @@ object AppModule {
             .addMigrations(imageMetadataMigration)
             .addMigrations(wikipediaUrlMigration)
             .addMigrations(popHistoricalDescriptionMigration)
+            .addMigrations(interestRatingMigration)
+            .addMigrations(descriptionSourceMigration)
+            .addMigrations(historicalMetadataMigration)
             .build()
 
     @Provides fun provideMonumentDao(database: AppDatabase) = database.monumentDao()

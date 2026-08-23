@@ -19,7 +19,14 @@ private data class MonumentAsset(
     val longitude: Double,
     val category: String? = null,
     val description: String? = null,
+    val descriptionSource: String? = null,
+    val historicalDates: String? = null,
+    val historicalPeriod: String? = null,
+    val protectionDates: String? = null,
     val popHistoricalDescription: String? = null,
+    val interestScore: Int? = null,
+    val interestPercentile: Int? = null,
+    val stars: Int? = null,
     val imageUrl: String? = null,
     val imagePageUrl: String? = null,
     val imageAuthor: String? = null,
@@ -56,7 +63,14 @@ class RoomMonumentRepository(
                 longitude = item.longitude,
                 category = item.category?.takeIf(String::isNotBlank),
                 description = item.description?.takeIf(String::isNotBlank),
+                descriptionSource = item.descriptionSource?.takeIf(String::isNotBlank),
+                historicalDates = item.historicalDates?.takeIf(String::isNotBlank),
+                historicalPeriod = item.historicalPeriod?.takeIf(String::isNotBlank),
+                protectionDates = item.protectionDates?.takeIf(String::isNotBlank),
                 popHistoricalDescription = item.popHistoricalDescription?.takeIf(String::isNotBlank),
+                interestScore = item.interestScore,
+                interestPercentile = item.interestPercentile,
+                stars = item.stars,
                 // Legacy imports contained unverified OSM image URLs. Only keep
                 // an image when its reusable license metadata is present.
                 imageUrl = item.imageUrl?.takeIf { item.imageLicense != null && it.isNotBlank() },
@@ -79,11 +93,23 @@ class RoomMonumentRepository(
             entities.forEach { monument ->
                 dao.updateCatalogMetadata(
                     monumentId = monument.id,
+                    description = monument.description,
+                    descriptionSource = monument.descriptionSource,
+                    historicalDates = monument.historicalDates,
+                    historicalPeriod = monument.historicalPeriod,
+                    protectionDates = monument.protectionDates,
                     wikipediaUrl = monument.wikipediaUrl,
                     popHistoricalDescription = monument.popHistoricalDescription,
+                    interestScore = monument.interestScore,
+                    interestPercentile = monument.interestPercentile,
+                    stars = monument.stars,
                 )
             }
         }
+    }
+
+    override fun observeCatalogMonuments(): Flow<List<Monument>> = dao.observeAll().map { list ->
+        list.map { it.toDomain() }
     }
 
     override fun observeRevealedMonuments(): Flow<List<Monument>> = dao.observeRevealed().map { list ->
@@ -102,7 +128,10 @@ class RoomMonumentRepository(
 
     private fun MonumentEntity.toDomain(discoveredAtEpochMillis: Long? = null) = Monument(
         id = id, name = name, latitude = latitude, longitude = longitude,
-        category = category, description = description, popHistoricalDescription = popHistoricalDescription,
+        category = category, description = description, descriptionSource = descriptionSource,
+        historicalDates = historicalDates, historicalPeriod = historicalPeriod, protectionDates = protectionDates,
+        popHistoricalDescription = popHistoricalDescription,
+        interestScore = interestScore, interestPercentile = interestPercentile, stars = stars,
         imageUrl = imageUrl,
         imagePageUrl = imagePageUrl, imageAuthor = imageAuthor, imageLicense = imageLicense,
         imageLicenseUrl = imageLicenseUrl, imageSource = imageSource,

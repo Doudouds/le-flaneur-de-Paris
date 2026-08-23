@@ -7,7 +7,7 @@ Pour remplacer les données :
 1. Exporter un CSV UTF-8 avec au minimum `lat`, `lon`, `name` ou `name:fr`, un identifiant Mérimée (`ref:mhs` ou `ref:FR:Merimee`) et, si disponible, `osm_type`/`osm_id`.
 2. Filtrer les coordonnées sur `48.815..48.903` et `2.224..2.470`.
 3. Produire des identifiants stables : `merimee-PA...` est préféré, sinon `osm-node/...`, `osm-way/...` ou `osm-relation/...`.
-4. Dédupliquer par identifiant et remplacer l’asset JSON par un tableau d’objets avec les champs `id`, `name`, `latitude`, `longitude`, `category`, `description`, `popHistoricalDescription`, `imageUrl`, `imagePageUrl`, `imageAuthor`, `imageLicense`, `imageLicenseUrl`, `imageSource`, `imageLookupCompleted`, `merimeeReference`, `wikipediaUrl`, `osmId`.
+4. Dédupliquer par identifiant et remplacer l’asset JSON par un tableau d’objets avec les champs `id`, `name`, `latitude`, `longitude`, `category`, `description`, `popHistoricalDescription`, `interestScore`, `interestPercentile`, `stars`, `imageUrl`, `imagePageUrl`, `imageAuthor`, `imageLicense`, `imageLicenseUrl`, `imageSource`, `imageLookupCompleted`, `merimeeReference`, `wikipediaUrl`, `osmId`.
 5. Désinstaller l’application ou vider sa base locale après changement si un catalogue a déjà été importé : l’import Room est volontairement exécuté une seule fois, à l’exception de la synchronisation des liens Wikipédia.
 
 ## Liens Wikipédia

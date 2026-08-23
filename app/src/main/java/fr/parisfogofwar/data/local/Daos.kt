@@ -50,11 +50,19 @@ interface MonumentDao {
         imageSource: String?,
     )
 
-    @Query("UPDATE monuments SET wikipediaUrl = :wikipediaUrl, popHistoricalDescription = :popHistoricalDescription WHERE id = :monumentId")
+    @Query("UPDATE monuments SET description = :description, descriptionSource = :descriptionSource, historicalDates = :historicalDates, historicalPeriod = :historicalPeriod, protectionDates = :protectionDates, wikipediaUrl = :wikipediaUrl, popHistoricalDescription = :popHistoricalDescription, interestScore = :interestScore, interestPercentile = :interestPercentile, stars = :stars WHERE id = :monumentId")
     suspend fun updateCatalogMetadata(
         monumentId: String,
+        description: String?,
+        descriptionSource: String?,
+        historicalDates: String?,
+        historicalPeriod: String?,
+        protectionDates: String?,
         wikipediaUrl: String?,
         popHistoricalDescription: String?,
+        interestScore: Int?,
+        interestPercentile: Int?,
+        stars: Int?,
     )
 }
 

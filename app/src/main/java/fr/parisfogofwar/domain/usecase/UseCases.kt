@@ -53,12 +53,17 @@ class ObserveExplorationStatisticsUseCase(
         explorationRepository.observeDiscoveryDates(),
         monumentRepository.observeRevealedMonuments(),
         monumentRepository.observeTotalCount(),
-    ) { cells, dates, revealed, total ->
+        monumentRepository.observeCatalogMonuments(),
+    ) { cells, dates, revealed, total, catalog ->
         ExplorationStatistics(
             discoveredCells = cells.size,
             totalCells = area.totalCellCount(),
             revealedMonuments = revealed.size,
             totalMonuments = total,
+            totalMonumentsByStars = catalog
+                .mapNotNull { monument -> monument.stars?.takeIf { it in 1..3 } }
+                .groupingBy { it }
+                .eachCount(),
             firstDiscoveryMillis = dates.minOrNull(),
             lastDiscoveryMillis = dates.maxOrNull(),
         )

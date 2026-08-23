@@ -1,0 +1,18 @@
+{
+  "asset": "C:\\Users\\edoua\\Documents\\paris-fog-of-war\\app\\src\\main\\assets\\paris_monuments.json",
+  "source_csv": "C:\\Users\\edoua\\Downloads\\Immeubles protégés au titre des Monuments Historiques-Analyser_Merge_Heritage_FR_Merimee.byOSM.csv\\Immeubles protégés au titre des Monuments Historiques-Analyser_Merge_Heritage_FR_Merimee.byOSM.csv",
+  "total_monuments": 1970,
+  "pop_notices": 1969,
+  "wikidata_exact_matches": 0,
+  "wikipedia_from_exact_match": 0,
+  "structured_pop_descriptions": 0,
+  "wikidata_descriptions": 0,
+  "repaired_wikipedia_descriptions": 0,
+  "repaired_generic_wikipedia_descriptions": 0,
+  "historical_metadata": 1718,
+  "protection_metadata": 1964,
+  "not_found": 0,
+  "errors": [],
+  "requests": 0,
+  "dry_run": false
+}

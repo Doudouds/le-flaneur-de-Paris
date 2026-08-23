@@ -13,14 +13,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -29,7 +35,9 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import fr.parisfogofwar.domain.model.Monument
 import fr.parisfogofwar.presentation.MonumentDetailsBottomSheet
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionScreen(
     monuments: List<Monument>,
@@ -40,40 +48,190 @@ fun CollectionScreen(
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences(COLLECTION_PREFERENCES, 0) }
     var sortMode by rememberSaveable { mutableIntStateOf(preferences.getInt(SORT_MODE_KEY, SORT_BY_DISCOVERY)) }
+    val discoveredByArrondissement = monuments.groupingBy { it.arrondissement }.eachCount()
+    val availableArrondissements = discoveredByArrondissement.keys.filterNotNull().sorted()
+    val discoveredByPeriod = monuments.groupingBy { it.historicalPeriod?.takeIf(String::isNotBlank) }.eachCount()
+    val availablePeriods = buildList {
+        addAll(discoveredByPeriod.keys.filterNotNull())
+        if (discoveredByPeriod.containsKey(null)) add(PERIOD_UNKNOWN)
+    }.distinct().sortedWith(
+        compareBy<String> { historicalPeriodIndex(it) }
+            .thenBy(String.CASE_INSENSITIVE_ORDER) { it },
+    )
+    var selectedArrondissement by rememberSaveable { mutableStateOf<Int?>(null) }
+    var selectedHistoricalPeriod by rememberSaveable { mutableStateOf<String?>(null) }
+    var arrondissementMenuExpanded by remember { mutableStateOf(false) }
+    var periodMenuExpanded by remember { mutableStateOf(false) }
+    val collectionListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val showScrollToTop by remember {
+        derivedStateOf { collectionListState.firstVisibleItemIndex > 0 }
+    }
+    LaunchedEffect(availableArrondissements) {
+        if (selectedArrondissement != null && selectedArrondissement !in availableArrondissements) {
+            selectedArrondissement = null
+        }
+    }
+    LaunchedEffect(availablePeriods) {
+        if (selectedHistoricalPeriod != null && selectedHistoricalPeriod !in availablePeriods) {
+            selectedHistoricalPeriod = null
+        }
+    }
+    val filteredMonuments = when (sortMode) {
+        SORT_BY_ARRONDISSEMENT -> selectedArrondissement?.let { arrondissement ->
+            monuments.filter { it.arrondissement == arrondissement }
+        } ?: monuments
+        SORT_BY_PERIOD -> selectedHistoricalPeriod?.let { period ->
+            if (period == PERIOD_UNKNOWN) {
+                monuments.filter { it.historicalPeriod.isNullOrBlank() }
+            } else {
+                monuments.filter { it.historicalPeriod == period }
+            }
+        } ?: monuments
+        else -> monuments
+    }
     val sortedMonuments = when (sortMode) {
-        SORT_BY_ARRONDISSEMENT -> monuments.sortedWith(
+        SORT_BY_ARRONDISSEMENT -> filteredMonuments.sortedWith(
             compareBy<Monument> { it.arrondissement ?: Int.MAX_VALUE }
                 .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name },
         )
-        else -> monuments.sortedWith(
-            compareBy<Monument> { it.discoveredAtEpochMillis ?: Long.MAX_VALUE }
+        SORT_BY_PERIOD -> filteredMonuments.sortedWith(
+            compareBy<Monument> { historicalPeriodIndex(it.historicalPeriod ?: PERIOD_UNKNOWN) }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name },
+        )
+        else -> filteredMonuments.sortedWith(
+            compareByDescending<Monument> { it.discoveredAtEpochMillis ?: Long.MIN_VALUE }
                 .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name },
         )
     }
-    val discoveredByArrondissement = monuments.groupingBy { it.arrondissement }.eachCount()
     var selectedMonumentId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedMonument = selectedMonumentId?.let { id -> monuments.firstOrNull { it.id == id } }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("Collection", style = MaterialTheme.typography.headlineMedium)
         Text("Les monuments apparaissent après la découverte de leur secteur.", modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
-        Text("Trier par", style = MaterialTheme.typography.titleSmall)
+        Text("Organiser par", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
             FilterChip(
                 selected = sortMode == SORT_BY_DISCOVERY,
                 onClick = {
                     sortMode = SORT_BY_DISCOVERY
+                    arrondissementMenuExpanded = false
+                    periodMenuExpanded = false
                     preferences.edit().putInt(SORT_MODE_KEY, SORT_BY_DISCOVERY).apply()
                 },
-                label = { Text("Découverte") },
+                label = { Text("Chronologie") },
             )
             FilterChip(
                 selected = sortMode == SORT_BY_ARRONDISSEMENT,
                 onClick = {
                     sortMode = SORT_BY_ARRONDISSEMENT
+                    periodMenuExpanded = false
                     preferences.edit().putInt(SORT_MODE_KEY, SORT_BY_ARRONDISSEMENT).apply()
                 },
                 label = { Text("Arrondissement") },
             )
+            FilterChip(
+                selected = sortMode == SORT_BY_PERIOD,
+                onClick = {
+                    sortMode = SORT_BY_PERIOD
+                    arrondissementMenuExpanded = false
+                    preferences.edit().putInt(SORT_MODE_KEY, SORT_BY_PERIOD).apply()
+                },
+                label = { Text("Époque") },
+            )
+        }
+        if (sortMode == SORT_BY_ARRONDISSEMENT) {
+            Text("Filtrer par arrondissement", style = MaterialTheme.typography.titleSmall)
+            ExposedDropdownMenuBox(
+                expanded = arrondissementMenuExpanded,
+                onExpandedChange = { arrondissementMenuExpanded = !arrondissementMenuExpanded },
+            ) {
+                OutlinedTextField(
+                    value = selectedArrondissement?.let(::arrondissementLabel) ?: "Tous les arrondissements",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Arrondissement") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = arrondissementMenuExpanded) },
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                        .fillMaxWidth(),
+                )
+                ExposedDropdownMenu(
+                    expanded = arrondissementMenuExpanded,
+                    onDismissRequest = { arrondissementMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Tous les arrondissements") },
+                        onClick = {
+                            selectedArrondissement = null
+                            arrondissementMenuExpanded = false
+                        },
+                    )
+                    availableArrondissements.forEach { arrondissement ->
+                        DropdownMenuItem(
+                            text = { Text(arrondissementLabel(arrondissement)) },
+                            onClick = {
+                                selectedArrondissement = arrondissement
+                                arrondissementMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+            selectedArrondissement?.let { arrondissement ->
+                Text(
+                    "${arrondissementLabel(arrondissement)} — ${filteredMonuments.size} révélés / ${arrondissementTotals[arrondissement] ?: filteredMonuments.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        } else if (sortMode == SORT_BY_PERIOD) {
+            Text("Filtrer par époque", style = MaterialTheme.typography.titleSmall)
+            ExposedDropdownMenuBox(
+                expanded = periodMenuExpanded,
+                onExpandedChange = { periodMenuExpanded = !periodMenuExpanded },
+            ) {
+                OutlinedTextField(
+                    value = selectedHistoricalPeriod ?: "Toutes les époques",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Époque historique") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = periodMenuExpanded) },
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                        .fillMaxWidth(),
+                )
+                ExposedDropdownMenu(
+                    expanded = periodMenuExpanded,
+                    onDismissRequest = { periodMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Toutes les époques") },
+                        onClick = {
+                            selectedHistoricalPeriod = null
+                            periodMenuExpanded = false
+                        },
+                    )
+                    availablePeriods.forEach { period ->
+                        DropdownMenuItem(
+                            text = { Text(period) },
+                            onClick = {
+                                selectedHistoricalPeriod = period
+                                periodMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+            selectedHistoricalPeriod?.let { period ->
+                Text(
+                    "$period — ${filteredMonuments.size} révélés",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
         if (monuments.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
@@ -83,27 +241,60 @@ fun CollectionScreen(
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(sortedMonuments, key = { _, monument -> monument.id }) { index, monument ->
-                    if (sortMode == SORT_BY_ARRONDISSEMENT) {
-                        val previousArrondissement = sortedMonuments.getOrNull(index - 1)?.arrondissement
-                        if (index == 0 || monument.arrondissement != previousArrondissement) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    arrondissementTitle(
-                                        monument.arrondissement,
-                                        discoveredByArrondissement[monument.arrondissement] ?: 0,
-                                        arrondissementTotals[monument.arrondissement]
-                                            ?: discoveredByArrondissement[monument.arrondissement]
-                                            ?: 0,
-                                    ),
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                HorizontalDivider(color = Color.Black, thickness = 1.dp)
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                LazyColumn(
+                    state = collectionListState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(sortedMonuments, key = { _, monument -> monument.id }) { index, monument ->
+                        if (sortMode == SORT_BY_ARRONDISSEMENT) {
+                            val previousArrondissement = sortedMonuments.getOrNull(index - 1)?.arrondissement
+                            if (index == 0 || monument.arrondissement != previousArrondissement) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        arrondissementTitle(
+                                            monument.arrondissement,
+                                            discoveredByArrondissement[monument.arrondissement] ?: 0,
+                                            arrondissementTotals[monument.arrondissement]
+                                                ?: discoveredByArrondissement[monument.arrondissement]
+                                                ?: 0,
+                                        ),
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    HorizontalDivider(color = Color.Black, thickness = 1.dp)
+                                }
                             }
                         }
+                        if (sortMode == SORT_BY_PERIOD) {
+                            val previousPeriod = sortedMonuments.getOrNull(index - 1)?.historicalPeriod ?: PERIOD_UNKNOWN
+                            val currentPeriod = monument.historicalPeriod ?: PERIOD_UNKNOWN
+                            if (index == 0 || currentPeriod != previousPeriod) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        "$currentPeriod — ${discoveredByPeriod[monument.historicalPeriod?.takeIf(String::isNotBlank)] ?: 0}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    HorizontalDivider(color = Color.Black, thickness = 1.dp)
+                                }
+                            }
+                        }
+                        MonumentRow(monument, onImageNeeded, onLocate) { selectedMonumentId = monument.id }
                     }
-                    MonumentRow(monument, onImageNeeded, onLocate) { selectedMonumentId = monument.id }
+                }
+                if (showScrollToTop) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            coroutineScope.launch { collectionListState.animateScrollToItem(0) }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(12.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Revenir en haut")
+                    }
                 }
             }
         }
@@ -135,12 +326,21 @@ private fun MonumentRow(
             MonumentThumbnail(monument)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(monument.name, style = MaterialTheme.typography.titleMedium)
+                monument.stars?.takeIf { it in 1..3 }?.let { stars ->
+                    Text(
+                        starLabel(stars),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
                 monument.category
                     ?.takeIf { category -> category.isNotBlank() && category.any(Char::isLetter) }
                     ?.let { category ->
                         Text(category, style = MaterialTheme.typography.labelMedium)
                     }
-                monument.description?.takeIf(String::isNotBlank)?.let { description ->
+                val collectionDescription = monument.description?.takeIf(String::isNotBlank)
+                    ?: monument.popHistoricalDescription?.takeIf(String::isNotBlank)
+                collectionDescription?.let { description ->
                     Text(description, style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -196,8 +396,20 @@ private fun MonumentThumbnail(monument: Monument) {
 
 private const val SORT_BY_DISCOVERY = 0
 private const val SORT_BY_ARRONDISSEMENT = 1
+private const val SORT_BY_PERIOD = 2
 private const val COLLECTION_PREFERENCES = "collection_preferences"
 private const val SORT_MODE_KEY = "sort_mode"
+private const val PERIOD_UNKNOWN = "Époque non renseignée"
+
+private val HISTORICAL_PERIOD_ORDER = listOf(
+    "Préhistoire",
+    "Antiquité",
+    "Moyen Âge",
+    "Renaissance",
+    "Époque moderne",
+    "Époque contemporaine",
+    PERIOD_UNKNOWN,
+)
 
 private fun arrondissementLabel(number: Int?): String = when (number) {
     1 -> "1er arrondissement"
@@ -205,7 +417,10 @@ private fun arrondissementLabel(number: Int?): String = when (number) {
     else -> "${number}e arrondissement"
 }
 
-private fun arrondissementTitle(number: Int?, discovered: Int, total: Int): String {
-    val remaining = (total - discovered).coerceAtLeast(0)
-    return "${arrondissementLabel(number)} — $discovered/$remaining"
-}
+private fun arrondissementTitle(number: Int?, discovered: Int, total: Int): String =
+    "${arrondissementLabel(number)} — $discovered/$total"
+
+private fun historicalPeriodIndex(period: String): Int =
+    HISTORICAL_PERIOD_ORDER.indexOf(period).takeIf { it >= 0 } ?: HISTORICAL_PERIOD_ORDER.lastIndex
+
+private fun starLabel(stars: Int): String = "★".repeat(stars) + "☆".repeat(3 - stars)

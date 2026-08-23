@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.*
 import fr.parisfogofwar.presentation.collection.CollectionScreen
+import fr.parisfogofwar.presentation.help.HelpScreen
 import fr.parisfogofwar.presentation.map.MapScreen
 import fr.parisfogofwar.presentation.settings.SettingsScreen
 import fr.parisfogofwar.presentation.statistics.StatisticsScreen
@@ -34,6 +36,7 @@ fun ParisApp(
         Destination("collection", "Collection", Icons.Default.CollectionsBookmark),
         Destination("statistics", "Stats", Icons.Default.BarChart),
         Destination("settings", "Réglages", Icons.Default.Settings),
+        Destination("help", "Aide", Icons.AutoMirrored.Filled.Help),
     )
 
     LaunchedEffect(notificationMonumentId, state.revealedMonuments) {
@@ -72,8 +75,9 @@ fun ParisApp(
                     },
                 )
             }
-            composable("statistics") { StatisticsScreen(state.statistics) }
+            composable("statistics") { StatisticsScreen(state.statistics, state.revealedMonuments) }
             composable("settings") { SettingsScreen(state.statistics, viewModel) }
+            composable("help") { HelpScreen() }
         }
     }
 }

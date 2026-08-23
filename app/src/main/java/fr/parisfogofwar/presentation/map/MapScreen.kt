@@ -33,6 +33,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.RasterSource
 import org.maplibre.android.style.sources.TileSet
+import org.maplibre.android.style.expressions.Expression.*
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
@@ -323,9 +324,24 @@ private object MapRenderer {
         if (style.getLayer(MapConfig.FOG_LAYER_ID) == null) style.addLayer(FillLayer(MapConfig.FOG_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(fillColor(Color.parseColor("#172033")), fillOpacity(1f)))
         if (style.getLayer(MapConfig.FOG_BORDER_LAYER_ID) == null) style.addLayer(LineLayer(MapConfig.FOG_BORDER_LAYER_ID, MapConfig.FOG_SOURCE_ID).withProperties(lineColor(Color.parseColor("#52627d")), lineWidth(0.5f), lineOpacity(.25f)))
         if (style.getSource(MapConfig.MONUMENT_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.MONUMENT_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
-        if (style.getLayer(MapConfig.MONUMENT_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.MONUMENT_LAYER_ID, MapConfig.MONUMENT_SOURCE_ID).withProperties(circleColor(Color.parseColor("#f7b955")), circleRadius(6f), circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f)))
+        if (style.getLayer(MapConfig.MONUMENT_LAYER_ID) == null) style.addLayer(
+            CircleLayer(MapConfig.MONUMENT_LAYER_ID, MapConfig.MONUMENT_SOURCE_ID).withProperties(
+                circleColor(
+                    match(
+                        get("stars"),
+                        literal(1), color(Color.parseColor("#f7b955")),
+                        literal(2), color(Color.parseColor("#64b5f6")),
+                        literal(3), color(Color.parseColor("#8e3a8a")),
+                        color(Color.parseColor("#f7b955")),
+                    ),
+                ),
+                circleRadius(6f),
+                circleStrokeColor(Color.WHITE),
+                circleStrokeWidth(1.5f),
+            ),
+        )
         if (style.getSource(MapConfig.MONUMENT_HINT_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.MONUMENT_HINT_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
-        if (style.getLayer(MapConfig.MONUMENT_HINT_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.MONUMENT_HINT_LAYER_ID, MapConfig.MONUMENT_HINT_SOURCE_ID).withProperties(circleColor(Color.parseColor("#f7b955")), circleRadius(4f), circleOpacity(.75f), circleStrokeColor(Color.WHITE), circleStrokeWidth(1f)))
+        if (style.getLayer(MapConfig.MONUMENT_HINT_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.MONUMENT_HINT_LAYER_ID, MapConfig.MONUMENT_HINT_SOURCE_ID).withProperties(circleColor(Color.parseColor("#4caf50")), circleRadius(4f), circleOpacity(.75f), circleStrokeColor(Color.WHITE), circleStrokeWidth(1f)))
         if (style.getSource(MapConfig.LOCATION_SOURCE_ID) == null) style.addSource(GeoJsonSource(MapConfig.LOCATION_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray())))
         if (style.getLayer(MapConfig.LOCATION_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.LOCATION_LAYER_ID, MapConfig.LOCATION_SOURCE_ID).withProperties(circleColor(Color.parseColor("#3277e8")), circleRadius(7f), circleStrokeColor(Color.WHITE), circleStrokeWidth(2f)))
     }
@@ -363,7 +379,10 @@ private object MapRenderer {
             }
         }
         val monumentFeatures = state.revealedMonuments.map { monument ->
-            Feature.fromGeometry(Point.fromLngLat(monument.longitude, monument.latitude)).also { feature -> feature.addStringProperty("id", monument.id) }
+            Feature.fromGeometry(Point.fromLngLat(monument.longitude, monument.latitude)).also { feature ->
+                feature.addStringProperty("id", monument.id)
+                feature.addNumberProperty("stars", monument.stars ?: 1)
+            }
         }
         monumentSource.setGeoJson(FeatureCollection.fromFeatures(monumentFeatures))
         val monumentHintFeatures = if (showMonumentHints) {

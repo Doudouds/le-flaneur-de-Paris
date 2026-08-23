@@ -49,6 +49,13 @@ fun MonumentDetailsBottomSheet(
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.clickable { copyText(context, monument.name) },
             )
+            monument.stars?.takeIf { it in 1..3 }?.let { stars ->
+                Text(
+                    starLabel(stars),
+                    color = MaterialTheme.colorScheme.tertiary,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
             val category = monument.category
                 ?.takeIf { value -> value.isNotBlank() && value.any(Char::isLetter) }
             val merimeeReference = monument.merimeeReference?.takeIf(String::isNotBlank)
@@ -72,14 +79,33 @@ fun MonumentDetailsBottomSheet(
                 }
             }
             historicalDescription?.let { description ->
-                Text("Description historique", style = MaterialTheme.typography.titleSmall)
+                Text("Description historique — POP", style = MaterialTheme.typography.titleSmall)
                 SelectionContainer { Text(description) }
             }
             monument.description
                 ?.takeIf(String::isNotBlank)
                 ?.let { description ->
-                    Text("Description", style = MaterialTheme.typography.titleSmall)
+                    val source = monument.descriptionSource?.takeIf(String::isNotBlank)
+                    Text(
+                        source?.let { "Description — $it" } ?: "Description",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
                     SelectionContainer { Text(description) }
+                }
+            monument.historicalPeriod
+                ?.takeIf(String::isNotBlank)
+                ?.let { period ->
+                    Text("Époque historique — $period", style = MaterialTheme.typography.bodyMedium)
+                }
+            monument.historicalDates
+                ?.takeIf(String::isNotBlank)
+                ?.let { dates ->
+                    Text("Période / dates — $dates", style = MaterialTheme.typography.bodyMedium)
+                }
+            monument.protectionDates
+                ?.takeIf(String::isNotBlank)
+                ?.let { dates ->
+                    Text("Dates de protection — $dates", style = MaterialTheme.typography.bodyMedium)
                 }
             if (historicalDescription != null) {
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -153,3 +179,5 @@ private fun copyText(context: Context, text: String) {
 private fun openPopPage(context: Context, reference: String) {
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://pop.culture.gouv.fr/notice/merimee/$reference")))
 }
+
+private fun starLabel(stars: Int): String = "★".repeat(stars) + "☆".repeat(3 - stars)

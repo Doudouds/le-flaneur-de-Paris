@@ -18,6 +18,18 @@ import fr.parisfogofwar.R
 import fr.parisfogofwar.domain.model.Monument
 import javax.inject.Inject
 
+enum class DiscoveryNotificationLevel(val storedValue: Int, val label: String, val description: String) {
+    EVERY_MONUMENT(0, "Chaque monument", "Recevoir une notification à chaque découverte."),
+    TWO_AND_THREE_STARS(1, "Monuments 2 et 3 étoiles", "Recevoir uniquement les découvertes de 2 ou 3 étoiles."),
+    THREE_STARS(2, "Monuments 3 étoiles", "Recevoir uniquement les découvertes de 3 étoiles."),
+    ;
+
+    companion object {
+        fun fromStoredValue(value: Int): DiscoveryNotificationLevel =
+            entries.firstOrNull { it.storedValue == value } ?: EVERY_MONUMENT
+    }
+}
+
 class DiscoveryNotificationHelper @Inject constructor(
     @param:ApplicationContext private val context: Context,
 ) {
@@ -44,6 +56,7 @@ class DiscoveryNotificationHelper @Inject constructor(
     }
 
     fun notifyNewMonument(monument: Monument) {
+        if (!shouldNotify(monument)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -72,6 +85,37 @@ class DiscoveryNotificationHelper @Inject constructor(
         NotificationManagerCompat.from(context).notify(monument.id.hashCode(), notification)
     }
 
+    companion object {
+        const val EXTRA_MONUMENT_ID = "fr.parisfogofwar.extra.DISCOVERY_MONUMENT_ID"
+        const val CHANNEL_ID = "monument-discoveries"
+        const val TRACKING_CHANNEL_ID = "location-tracking"
+        const val TRACKING_PENDING_INTENT_REQUEST_CODE = 2001
+        const val NOTIFICATION_PREFERENCES = "notification_preferences"
+        const val NOTIFICATION_LEVEL_KEY = "notification_level"
+
+        fun notificationLevel(context: Context): DiscoveryNotificationLevel =
+            DiscoveryNotificationLevel.fromStoredValue(
+                context.getSharedPreferences(NOTIFICATION_PREFERENCES, Context.MODE_PRIVATE)
+                    .getInt(NOTIFICATION_LEVEL_KEY, DiscoveryNotificationLevel.EVERY_MONUMENT.storedValue),
+            )
+
+        fun setNotificationLevel(context: Context, level: DiscoveryNotificationLevel) {
+            context.getSharedPreferences(NOTIFICATION_PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .putInt(NOTIFICATION_LEVEL_KEY, level.storedValue)
+                .apply()
+        }
+    }
+
+    private fun shouldNotify(monument: Monument): Boolean {
+        val level = notificationLevel(context)
+        return when (level) {
+            DiscoveryNotificationLevel.EVERY_MONUMENT -> true
+            DiscoveryNotificationLevel.TWO_AND_THREE_STARS -> monument.stars == 2 || monument.stars == 3
+            DiscoveryNotificationLevel.THREE_STARS -> monument.stars == 3
+        }
+    }
+
     fun buildTrackingNotification() = NotificationCompat.Builder(context, TRACKING_CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_mylocation)
         .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.logo))
@@ -92,10 +136,4 @@ class DiscoveryNotificationHelper @Inject constructor(
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    companion object {
-        const val EXTRA_MONUMENT_ID = "fr.parisfogofwar.extra.DISCOVERY_MONUMENT_ID"
-        const val CHANNEL_ID = "monument-discoveries"
-        const val TRACKING_CHANNEL_ID = "location-tracking"
-        const val TRACKING_PENDING_INTENT_REQUEST_CODE = 2001
-    }
 }

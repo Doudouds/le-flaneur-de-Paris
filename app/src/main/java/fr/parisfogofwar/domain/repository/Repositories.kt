@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface MonumentRepository {
     suspend fun ensureCatalogImported()
+    fun observeCatalogMonuments(): Flow<List<Monument>>
     fun observeRevealedMonuments(): Flow<List<Monument>>
     fun observeTotalCount(): Flow<Int>
     fun observeMonumentCells(): Flow<Set<GridCellId>>
