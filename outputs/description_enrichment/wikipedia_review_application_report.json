@@ -1,0 +1,150 @@
+{
+  "asset": "C:\\Users\\edoua\\Documents\\paris-fog-of-war\\app\\src\\main\\assets\\paris_monuments.json",
+  "review_csv": "C:\\Users\\edoua\\Documents\\paris-fog-of-war\\outputs\\description_enrichment\\wikipedia_source_review.csv",
+  "dry_run": false,
+  "applied": [
+    {
+      "id": "merimee-PA00086315",
+      "merimeeReference": "PA00086315",
+      "before": {
+        "title": "Hôtel de la Salle",
+        "url": "https://fr.wikipedia.org/wiki/H%C3%B4tel_de_la_Salle"
+      },
+      "after": {
+        "title": "Hôtel Caillebot de La Salle",
+        "url": "https://fr.wikipedia.org/wiki/H%C3%B4tel_Caillebot_de_La_Salle"
+      }
+    },
+    {
+      "id": "merimee-PA00088988",
+      "merimeeReference": "PA00088988",
+      "before": {
+        "title": "Printemps (grands magasins)",
+        "url": "https://fr.wikipedia.org/wiki/Printemps_(grands_magasins)"
+      },
+      "after": {
+        "title": "Printemps Haussmann",
+        "url": "https://fr.wikipedia.org/wiki/Printemps_Haussmann"
+      }
+    },
+    {
+      "id": "merimee-PA00088818",
+      "merimeeReference": "PA00088818",
+      "before": {
+        "title": "Hôpital Beaujon",
+        "url": "https://fr.wikipedia.org/wiki/H%C3%B4pital_Beaujon"
+      },
+      "after": {
+        "title": "Hospice Beaujon",
+        "url": "https://fr.wikipedia.org/wiki/Hospice_Beaujon"
+      }
+    },
+    {
+      "id": "merimee-PA00086476",
+      "merimeeReference": "PA00086476",
+      "before": {
+        "title": "Statue équestre de Louis XIII",
+        "url": "https://fr.wikipedia.org/wiki/Statue_%C3%A9questre_de_Louis_XIII"
+      },
+      "after": {
+        "title": "Square Louis-XIII",
+        "url": "https://fr.wikipedia.org/wiki/Square_Louis-XIII"
+      }
+    },
+    {
+      "id": "merimee-PA00088435",
+      "merimeeReference": "PA00088435",
+      "before": {
+        "title": "Hôtel de Nesmond",
+        "url": "https://fr.wikipedia.org/wiki/H%C3%B4tel_de_Nesmond"
+      },
+      "after": {
+        "title": "Hôtel de Nesmond (Paris)",
+        "url": "https://fr.wikipedia.org/wiki/H%C3%B4tel_de_Nesmond_(Paris)"
+      }
+    },
+    {
+      "id": "merimee-PA00079906",
+      "merimeeReference": "PA00079906",
+      "before": {
+        "title": "Allée du Moulin-des-Corbeaux",
+        "url": "https://fr.wikipedia.org/wiki/All%C3%A9e_du_Moulin-des-Corbeaux"
+      },
+      "after": {
+        "title": "Moulin de la Chaussée",
+        "url": "https://fr.wikipedia.org/wiki/Moulin_de_la_Chauss%C3%A9e"
+      }
+    },
+    {
+      "id": "merimee-PA00088902",
+      "merimeeReference": "PA00088902",
+      "before": {
+        "title": "Conservatoire national supérieur d'art dramatique",
+        "url": "https://fr.wikipedia.org/wiki/Conservatoire_national_sup%C3%A9rieur_d%27art_dramatique"
+      },
+      "after": {
+        "title": "Salle du Conservatoire",
+        "url": "https://fr.wikipedia.org/wiki/Salle_du_Conservatoire"
+      }
+    },
+    {
+      "id": "merimee-PA00086151",
+      "merimeeReference": "PA00086151",
+      "before": {
+        "title": "Rue de Montmorency",
+        "url": "https://fr.wikipedia.org/wiki/Rue_de_Montmorency"
+      },
+      "after": {
+        "title": "Hôtel Thiroux de Lailly",
+        "url": "https://fr.wikipedia.org/wiki/H%C3%B4tel_Thiroux_de_Lailly"
+      }
+    }
+  ],
+  "kept": [
+    {
+      "id": "merimee-PA00088993",
+      "merimeeReference": "PA00088993",
+      "title": "Musée Grévin",
+      "url": "https://fr.wikipedia.org/wiki/Mus%C3%A9e_Gr%C3%A9vin"
+    },
+    {
+      "id": "merimee-PA00085991",
+      "merimeeReference": "PA00085991",
+      "title": "Palais de justice de Paris",
+      "url": "https://fr.wikipedia.org/wiki/Palais_de_justice_de_Paris"
+    },
+    {
+      "id": "merimee-PA00088477",
+      "merimeeReference": "PA00088477",
+      "title": "Lycée Louis-le-Grand",
+      "url": "https://fr.wikipedia.org/wiki/Lyc%C3%A9e_Louis-le-Grand"
+    },
+    {
+      "id": "merimee-PA00088392",
+      "merimeeReference": "PA00088392",
+      "title": "Abbaye du Val-de-Grâce",
+      "url": "https://fr.wikipedia.org/wiki/Abbaye_du_Val-de-Gr%C3%A2ce"
+    },
+    {
+      "id": "merimee-PA00086638",
+      "merimeeReference": "PA00086638",
+      "title": "Moulin de la Charité",
+      "url": "https://fr.wikipedia.org/wiki/Moulin_de_la_Charit%C3%A9"
+    },
+    {
+      "id": "merimee-PA00088746",
+      "merimeeReference": "PA00088746",
+      "title": "Petit hôtel de Villars",
+      "url": "https://fr.wikipedia.org/wiki/Petit_h%C3%B4tel_de_Villars"
+    }
+  ],
+  "skipped": [
+    {
+      "id": "merimee-PA00088104",
+      "merimeeReference": "PA00088104",
+      "reason": "référence explicitement exclue de cette application"
+    }
+  ],
+  "errors": [],
+  "requests": 0
+}

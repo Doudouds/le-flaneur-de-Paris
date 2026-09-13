@@ -1,7 +1,7 @@
 package fr.parisfogofwar.domain.repository
 
-import fr.parisfogofwar.domain.model.DomainLocation
 import fr.parisfogofwar.domain.model.GridCellId
+import fr.parisfogofwar.domain.model.LocationUpdate
 import fr.parisfogofwar.domain.model.Monument
 import kotlinx.coroutines.flow.Flow
 
@@ -22,5 +22,5 @@ interface ExplorationRepository {
 }
 
 interface LocationRepository {
-    fun locations(): Flow<DomainLocation>
+    fun locations(): Flow<LocationUpdate>
 }

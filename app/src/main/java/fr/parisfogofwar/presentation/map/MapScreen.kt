@@ -1,5 +1,8 @@
 package fr.parisfogofwar.presentation.map
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.graphics.Color
 import android.graphics.RectF
 import androidx.compose.foundation.layout.*
@@ -14,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import fr.parisfogofwar.BuildConfig
 import fr.parisfogofwar.domain.model.*
 import fr.parisfogofwar.map.MapConfig
 import fr.parisfogofwar.presentation.*
@@ -43,12 +47,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
     val context = LocalContext.current
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    val renderer = remember { MapRenderer() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var mapView by remember { mutableStateOf<MapView?>(null) }
     var mapReady by remember { mutableStateOf(false) }
     var selectedMonumentId by remember { mutableStateOf<String?>(null) }
     val selectedMonument = selectedMonumentId?.let { id -> state.revealedMonuments.firstOrNull { it.id == id } }
@@ -58,8 +66,26 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
     val preferences = remember { context.getSharedPreferences("onboarding", 0) }
     val renderScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val latestState by rememberUpdatedState(state)
+    val latestHints by rememberUpdatedState(showMonumentHints)
     val latestRevealedMonuments by rememberUpdatedState(state.revealedMonuments)
 
+    DisposableEffect(mapView, lifecycleOwner) {
+        val view = mapView
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> view?.onStart()
+                Lifecycle.Event.ON_RESUME -> view?.onResume()
+                Lifecycle.Event.ON_PAUSE -> view?.onPause()
+                Lifecycle.Event.ON_STOP -> view?.onStop()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     LaunchedEffect(Unit) { showWelcome = !preferences.getBoolean("seen", false) }
 
     LaunchedEffect(state.message) {
@@ -84,15 +110,17 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                 MapLibre.getInstance(it)
                 MapView(it, MapLibreMapOptions.createFromAttributes(it).textureMode(true)).also { view ->
                     view.onCreate(null)
-                    view.onStart()
-                    view.onResume()
+                    mapView = view
                     view.getMapAsync { mapInstance ->
+                        if (mapView !== view) return@getMapAsync
                         map = mapInstance
-                        mapInstance.setStyle(Style.Builder().fromUri(MapConfig.styleUrl)) { style ->
+                        // The raster layer below supplies the map; no remote demo style is needed.
+                        mapInstance.setStyle(Style.Builder().fromJson("""{"version":8,"sources":{},"layers":[]}""")) { style ->
+                            if (mapView !== view) return@setStyle
                             val parisBoundaryJson = it.assets.open("paris_boundary.geojson").bufferedReader().use { reader -> reader.readText() }
-                            MapRenderer.ensureLayers(style, parisBoundaryJson)
-                            val initialFocus = state.focusLocation
-                            val initialLocation = initialFocus ?: state.currentLocation
+                            renderer.ensureLayers(style, parisBoundaryJson)
+                            val initialFocus = latestState.focusLocation
+                            val initialLocation = initialFocus ?: latestState.currentLocation
                             mapInstance.cameraPosition = CameraPosition.Builder()
                                 .target(MapLatLng(initialLocation?.latitude ?: MapConfig.parisCenter.latitude, initialLocation?.longitude ?: MapConfig.parisCenter.longitude))
                                 .zoom(when {
@@ -102,7 +130,7 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                                 })
                                 .build()
                             mapReady = true
-                            MapRenderer.update(style, state, mapInstance, showMonumentHints, renderScope)
+                            renderer.update(style, latestState, latestHints, renderScope)
                             mapInstance.addOnMapLongClickListener { point ->
                                 viewModel.simulateDiscovery(LatLng(point.latitude, point.longitude))
                                 true
@@ -127,14 +155,41 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
                     }
                 }
             },
-            update = { view ->
+            onRelease = { view ->
+                renderer.dispose()
+                mapReady = false
+                map = null
+                view.onPause()
+                view.onStop()
+                view.onDestroy()
+                mapView = null
+            },
+            update = { _ ->
                 if (mapReady) {
                     map?.style?.let { style ->
-                        MapRenderer.update(style, state, map!!, showMonumentHints, renderScope)
+                        renderer.update(style, state, showMonumentHints, renderScope)
                     }
                 }
             },
         )
+
+        if (BuildConfig.DEBUG && state.showLocationDebug) {
+            state.lastLocationUpdate?.let { update ->
+                Surface(
+                    modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = .92f),
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Column(Modifier.padding(8.dp)) {
+                        Text("GPS DEBUG", style = MaterialTheme.typography.labelMedium)
+                        Text("brute: %.6f, %.6f".format(update.raw.coordinates.latitude, update.raw.coordinates.longitude), style = MaterialTheme.typography.labelSmall)
+                        Text("filtrée: ${update.filtered?.coordinates ?: "—"}", style = MaterialTheme.typography.labelSmall)
+                        Text("±%.1f m · âge %d ms · ${update.decision}".format(update.raw.accuracyMeters, update.ageMillis), style = MaterialTheme.typography.labelSmall)
+                        Text("vitesse ${update.raw.speedMetersPerSecond ?: update.estimatedSpeedMetersPerSecond ?: "—"} · ${update.quality}", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
 
         LaunchedEffect(mapReady, state.currentLocation, state.focusLocation) {
             val mapInstance = map ?: return@LaunchedEffect
@@ -174,6 +229,10 @@ fun MapScreen(state: AppUiState, viewModel: AppViewModel) {
             } else if (state.currentLocation == null) {
                 Card(Modifier.fillMaxWidth()) {
                     Text("Recherche de votre position…", Modifier.padding(12.dp))
+                }
+            } else if (state.locationPrecision == LocationPrecision.Approximate) {
+                Card(Modifier.fillMaxWidth()) {
+                    Text("Localisation approximative : activez la position précise dans les réglages Android pour une trace et un fog of war plus fiables.", Modifier.padding(12.dp))
                 }
             }
         }
@@ -303,13 +362,21 @@ private fun StatPill(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-private object MapRenderer {
+private class MapRenderer {
     private data class FogRenderKey(
         val discoveredCells: Set<GridCellId>,
     )
 
     private var lastFogRenderKey: FogRenderKey? = null
     private var fogRenderJob: Job? = null
+
+    private var lastMonuments: List<Monument>? = null
+    private var lastHints: Pair<Set<GridCellId>, Set<GridCellId>>? = null
+    private var lastLocation: LatLng? = null
+
+    fun dispose() {
+        fogRenderJob?.cancel()
+    }
 
     fun ensureLayers(style: Style, parisBoundaryJson: String) {
         lastFogRenderKey = null
@@ -346,11 +413,11 @@ private object MapRenderer {
         if (style.getLayer(MapConfig.LOCATION_LAYER_ID) == null) style.addLayer(CircleLayer(MapConfig.LOCATION_LAYER_ID, MapConfig.LOCATION_SOURCE_ID).withProperties(circleColor(Color.parseColor("#3277e8")), circleRadius(7f), circleStrokeColor(Color.WHITE), circleStrokeWidth(2f)))
     }
 
-    fun update(style: Style, state: AppUiState, map: MapLibreMap, showMonumentHints: Boolean, scope: CoroutineScope) {
-        updateSources(style, state, map, showMonumentHints, scope)
+    fun update(style: Style, state: AppUiState, showMonumentHints: Boolean, scope: CoroutineScope) {
+        updateSources(style, state, showMonumentHints, scope)
     }
 
-    private fun updateSources(style: Style, state: AppUiState, map: MapLibreMap, showMonumentHints: Boolean, scope: CoroutineScope) {
+    private fun updateSources(style: Style, state: AppUiState, showMonumentHints: Boolean, scope: CoroutineScope) {
         val fogSource = style.getSourceAs<GeoJsonSource>(MapConfig.FOG_SOURCE_ID) ?: return
         val monumentSource = style.getSourceAs<GeoJsonSource>(MapConfig.MONUMENT_SOURCE_ID) ?: return
         val monumentHintSource = style.getSourceAs<GeoJsonSource>(MapConfig.MONUMENT_HINT_SOURCE_ID) ?: return
@@ -366,39 +433,51 @@ private object MapRenderer {
                 val rings = buildList {
                     add(parisBoundaryRing)
                     state.discoveredCells.forEach { cell ->
+                        ensureActive()
                         val points = cell.toWebMercatorBounds().toWgs84Polygon().map { Point.fromLngLat(it.longitude, it.latitude) }
                         add(points)
                     }
                 }
                 val fogFeature = Feature.fromGeometry(Polygon.fromLngLats(rings))
+                val fogJson = FeatureCollection.fromFeatures(arrayOf(fogFeature)).toJson()
                 withContext(Dispatchers.Main.immediate) {
                     if (lastFogRenderKey == renderKey) {
-                        fogSource.setGeoJson(FeatureCollection.fromFeatures(arrayOf(fogFeature)))
+                        fogSource.setGeoJson(fogJson)
                     }
                 }
             }
         }
-        val monumentFeatures = state.revealedMonuments.map { monument ->
-            Feature.fromGeometry(Point.fromLngLat(monument.longitude, monument.latitude)).also { feature ->
-                feature.addStringProperty("id", monument.id)
-                feature.addNumberProperty("stars", monument.stars ?: 1)
+        if (state.revealedMonuments != lastMonuments) {
+            lastMonuments = state.revealedMonuments
+            val monumentFeatures = state.revealedMonuments.map { monument ->
+                Feature.fromGeometry(Point.fromLngLat(monument.longitude, monument.latitude)).also { feature ->
+                    feature.addStringProperty("id", monument.id)
+                    feature.addNumberProperty("stars", monument.stars ?: 1)
+                }
             }
+            monumentSource.setGeoJson(FeatureCollection.fromFeatures(monumentFeatures))
         }
-        monumentSource.setGeoJson(FeatureCollection.fromFeatures(monumentFeatures))
-        val monumentHintFeatures = if (showMonumentHints) {
-            state.allMonumentCells.filter { it !in state.discoveredCells }.map { cell ->
-                val bounds = cell.toWebMercatorBounds()
-                val center = MercatorPoint(
-                    (bounds.minX + bounds.maxX) / 2.0,
-                    (bounds.minY + bounds.maxY) / 2.0,
-                ).toWgs84()
-                Feature.fromGeometry(Point.fromLngLat(center.longitude, center.latitude))
-            }
-        } else emptyList()
-        monumentHintSource.setGeoJson(FeatureCollection.fromFeatures(monumentHintFeatures))
+        val hints = if (showMonumentHints) state.allMonumentCells to state.discoveredCells else emptySet<GridCellId>() to emptySet<GridCellId>()
+        if (hints != lastHints) {
+            lastHints = hints
+            val monumentHintFeatures = if (showMonumentHints) {
+                state.allMonumentCells.filter { it !in state.discoveredCells }.map { cell ->
+                    val bounds = cell.toWebMercatorBounds()
+                    val center = MercatorPoint(
+                        (bounds.minX + bounds.maxX) / 2.0,
+                        (bounds.minY + bounds.maxY) / 2.0,
+                    ).toWgs84()
+                    Feature.fromGeometry(Point.fromLngLat(center.longitude, center.latitude))
+                }
+            } else emptyList()
+            monumentHintSource.setGeoJson(FeatureCollection.fromFeatures(monumentHintFeatures))
+        }
         val location = state.currentLocation
-        val locationFeatures: List<Feature> = if (location == null) emptyList() else listOf(Feature.fromGeometry(Point.fromLngLat(location.longitude, location.latitude)))
-        locationSource.setGeoJson(FeatureCollection.fromFeatures(locationFeatures))
+        if (location != lastLocation) {
+            lastLocation = location
+            val locationFeatures: List<Feature> = if (location == null) emptyList() else listOf(Feature.fromGeometry(Point.fromLngLat(location.longitude, location.latitude)))
+            locationSource.setGeoJson(FeatureCollection.fromFeatures(locationFeatures))
+        }
     }
 
     private var parisBoundaryRing: List<Point> = emptyList()

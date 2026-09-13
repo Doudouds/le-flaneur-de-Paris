@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,6 +8,10 @@ plugins {
     id("kotlin-kapt")
     id("com.google.dagger.hilt.android")
 }
+
+val catalogFingerprint = MessageDigest.getInstance("SHA-256")
+    .digest(file("src/main/assets/paris_monuments.json").readBytes())
+    .joinToString("") { "%02x".format(it) }
 
 android {
     namespace = "fr.parisfogofwar"
@@ -18,6 +24,7 @@ android {
         versionCode = 1
         // Version affichée dans Réglages.
         versionName = "0.0.1"
+        buildConfigField("String", "CATALOG_FINGERPRINT", "\"$catalogFingerprint\"")
         // The demo style is a reliable MapLibre container; the detailed OSM raster layer
         // is added programmatically after it loads.
         buildConfigField("String", "MAP_STYLE_URL", "\"https://demotiles.maplibre.org/style.json\"")

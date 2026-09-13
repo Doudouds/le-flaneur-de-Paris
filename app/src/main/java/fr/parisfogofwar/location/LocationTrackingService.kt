@@ -50,7 +50,9 @@ class LocationTrackingService : Service() {
                 launch { notifyNewMonuments() }
                 locationRepository.locations()
                     .catch { stopSelf() }
-                    .collect { location ->
+                    .collect { update ->
+                        val location = update.filtered
+                        if (location == null || !update.safeForFogOfWar) return@collect
                         when (discoverCurrentCell(location)) {
                             is CellDiscoveryResult.NewlyDiscovered,
                             CellDiscoveryResult.AccuracyTooLow,

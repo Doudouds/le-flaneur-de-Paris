@@ -1,5 +1,6 @@
 package fr.parisfogofwar.data.local
 
+import androidx.room.Transaction
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -8,6 +9,29 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MonumentDao {
+    @Transaction
+    suspend fun importCatalog(monuments: List<MonumentEntity>) {
+        if (count() == 0) {
+            insertAll(monuments)
+        } else {
+            monuments.forEach { monument ->
+                updateCatalogMetadata(
+                    monumentId = monument.id,
+                    description = monument.description,
+                    descriptionSource = monument.descriptionSource,
+                    historicalDates = monument.historicalDates,
+                    historicalPeriod = monument.historicalPeriod,
+                    protectionDates = monument.protectionDates,
+                    wikipediaUrl = monument.wikipediaUrl,
+                    popHistoricalDescription = monument.popHistoricalDescription,
+                    interestScore = monument.interestScore,
+                    interestPercentile = monument.interestPercentile,
+                    stars = monument.stars,
+                )
+            }
+        }
+    }
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(monuments: List<MonumentEntity>)
 

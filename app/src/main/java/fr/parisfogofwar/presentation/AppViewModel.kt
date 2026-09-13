@@ -18,12 +18,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class LocationPermissionState { Unknown, Granted, Denied }
+enum class LocationPrecision { Unknown, Approximate, Precise }
 
 data class AppUiState(
     val isLoading: Boolean = true,
     val permissionState: LocationPermissionState = LocationPermissionState.Unknown,
+    val locationPrecision: LocationPrecision = LocationPrecision.Unknown,
     val backgroundTrackingEnabled: Boolean = false,
     val currentLocation: LatLng? = null,
+    val lastLocationUpdate: LocationUpdate? = null,
+    val showLocationDebug: Boolean = false,
     val discoveredCells: Set<GridCellId> = emptySet(),
     val allMonumentCells: Set<GridCellId> = emptySet(),
     val revealedMonuments: List<Monument> = emptyList(),
@@ -56,22 +60,25 @@ class AppViewModel @Inject constructor(
     private var locationJob: Job? = null
     private var observedMonumentIds: Set<String>? = null
     private val imageLookupsStarted = mutableSetOf<String>()
-    private val locationDisplayFilter = LocationDisplayFilter()
-
     init {
         backgroundLocationController.startIfEnabled()
+        // Restore the fog immediately, independently of catalog import and statistics.
+        viewModelScope.launch {
+            observeCells().distinctUntilChanged().collect { cells ->
+                _uiState.update { it.copy(discoveredCells = cells) }
+            }
+        }
         viewModelScope.launch {
             runCatching { monumentRepository.ensureCatalogImported() }
                 .onFailure { _uiState.update { it.copy(isLoading = false, message = "Impossible de charger le catalogue local.") } }
             combine(
-                observeCells(),
                 observeMonuments(),
                 observeStatistics(),
                 monumentRepository.observeMonumentCells(),
                 monumentRepository.observeArrondissementTotals(),
-            ) { cells, monuments, stats, monumentCells, arrondissementTotals ->
-                Quintuple(cells, monuments, stats, monumentCells, arrondissementTotals)
-            }.collect { (cells, monuments, stats, monumentCells, arrondissementTotals) ->
+            ) { monuments, stats, monumentCells, arrondissementTotals ->
+                Quadruple(monuments, stats, monumentCells, arrondissementTotals)
+            }.collect { (monuments, stats, monumentCells, arrondissementTotals) ->
                 val currentMonumentIds = monuments.mapTo(mutableSetOf()) { it.id }
                 observedMonumentIds?.let { previousIds ->
                     monuments.filter { it.id !in previousIds }.forEach(discoveryNotificationHelper::notifyNewMonument)
@@ -80,7 +87,6 @@ class AppViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        discoveredCells = cells,
                         allMonumentCells = monumentCells,
                         revealedMonuments = monuments,
                         arrondissementTotals = arrondissementTotals,
@@ -91,26 +97,33 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    fun setPermissionState(state: LocationPermissionState) {
-        _uiState.update { it.copy(permissionState = state) }
-        if (state == LocationPermissionState.Granted) startLocationUpdates()
+    fun setPermissionState(state: LocationPermissionState, precision: LocationPrecision = LocationPrecision.Unknown) {
+        _uiState.update { it.copy(permissionState = state, locationPrecision = precision) }
+        if (state == LocationPermissionState.Granted) {
+            startLocationUpdates()
+        } else {
+            locationJob?.cancel()
+            locationJob = null
+        }
     }
 
     fun startLocationUpdates() {
         if (locationJob != null) return
         locationJob = viewModelScope.launch {
-            locationRepository.locations().collect { location ->
-                when (val result = discoverCurrentCell(location)) {
-                    is CellDiscoveryResult.NewlyDiscovered -> Unit
-                    // Ignore imprecise fixes silently. They must not block the user
-                    // with a repeated warning while the phone is refining its fix.
-                    CellDiscoveryResult.AccuracyTooLow -> Unit
-                    CellDiscoveryResult.OutsideGameArea -> showMessage("Vous êtes en dehors de la zone d’exploration.")
-                    CellDiscoveryResult.InvalidLocation, is CellDiscoveryResult.AlreadyDiscovered -> Unit
+            locationRepository.locations().collect { update ->
+                _uiState.update { it.copy(lastLocationUpdate = update) }
+                val location = update.filtered ?: return@collect
+                if (update.safeForFogOfWar) {
+                    when (val result = discoverCurrentCell(location)) {
+                        is CellDiscoveryResult.NewlyDiscovered -> Unit
+                        // Ignore imprecise fixes silently. They must not block the user
+                        // with a repeated warning while the phone is refining its fix.
+                        CellDiscoveryResult.AccuracyTooLow -> Unit
+                        CellDiscoveryResult.OutsideGameArea -> showMessage("Vous êtes en dehors de la zone d’exploration.")
+                        CellDiscoveryResult.InvalidLocation, is CellDiscoveryResult.AlreadyDiscovered -> Unit
+                    }
                 }
-                locationDisplayFilter.accept(location)?.let { displayedLocation ->
-                    _uiState.update { it.copy(currentLocation = displayedLocation) }
-                }
+                _uiState.update { it.copy(currentLocation = location.coordinates) }
             }
         }
     }
@@ -152,6 +165,11 @@ class AppViewModel @Inject constructor(
 
     fun clearMessage() { _uiState.update { it.copy(message = null) } }
 
+    fun setLocationDebugVisible(visible: Boolean) {
+        if (!BuildConfig.DEBUG) return
+        _uiState.update { it.copy(showLocationDebug = visible) }
+    }
+
     fun focusMonument(monument: Monument) {
         _uiState.update { it.copy(focusLocation = LatLng(monument.latitude, monument.longitude)) }
     }
@@ -179,4 +197,4 @@ class AppViewModel @Inject constructor(
     private fun showMessage(message: String) { _uiState.update { it.copy(message = message) } }
 }
 
-private data class Quintuple<A, B, C, D, E>(val first: A, val second: B, val third: C, val fourth: D, val fifth: E)
+private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

@@ -82,6 +82,39 @@ SQLite afin de rendre cette passe reprenable.
 Le rapport de cette passe est distinct :
 `outputs/description_enrichment/metadata_enrichment_report.json`.
 
+## Audit des sources Wikipédia
+
+Après l'enrichissement, [`tools/audit_wikipedia_sources.py`](tools/audit_wikipedia_sources.py)
+contrôle les descriptions dont la source est Wikipédia. Il compare l'article
+retenu avec la référence Mérimée (`P380`) dans Wikidata, puis vérifie le type
+du monument, les alias présents dans l'introduction et la proximité des
+coordonnées. Il ne modifie rien par défaut et produit une file de revue :
+
+```powershell
+python tools/audit_wikipedia_sources.py
+```
+
+Les anomalies sont conservées dans
+`outputs/description_enrichment/wikipedia_source_review.csv` et le détail
+technique dans `outputs/description_enrichment/wikipedia_source_audit.json`.
+L'option `--apply-high-confidence` reste volontairement stricte : elle exige
+une concordance de référence/alias, de type et de localisation.
+
+Après revue humaine, renseigner dans la colonne `action` soit
+`keep current title and current URL`, soit
+`Set to suggested title and suggested url`, puis appliquer uniquement ces
+décisions explicites :
+
+```powershell
+python tools/apply_wikipedia_review_actions.py
+```
+
+Le script ne modifie pas le CSV de revue, réutilise l'introduction mise en
+cache de l'article choisi et écrit son journal dans
+`wikipedia_review_application_report.json`. Une référence peut être laissée
+volontairement intacte avec `--skip-reference PA00000000`. Les décisions
+restent conservées si l'audit est relancé ultérieurement.
+
 La fréquentation physique est facultative et doit venir d’un export public
 structuré fourni avec `--attendance-csv`. Le fichier doit contenir une colonne
 de visiteurs (`visitors`, `visiteurs`, `visites`, `frequentation` ou
@@ -114,6 +147,11 @@ fréquentation physique, 40 % pageviews et 20 % sitelinks, renormalisés sur les
 indicateurs disponibles. Une donnée absente n’est jamais transformée en zéro.
 Sans indicateur, le script utilise un plancher explicite de 2; une page
 Wikipédia fiable sans métrique vaut 5 et un QID fiable sans métrique vaut 3.
+
+La mention structurée `INTE` de POP est également conservée sous
+`popInterest`. Une mention officielle telle que « À signaler » participe au
+score d'intérêt exceptionnel ; elle ne remplace ni le niveau de protection ni
+les indicateurs de notoriété.
 
 Enfin:
 

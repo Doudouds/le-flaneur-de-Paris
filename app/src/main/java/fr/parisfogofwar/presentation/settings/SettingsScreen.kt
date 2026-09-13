@@ -76,6 +76,18 @@ fun SettingsScreen(statistics: ExplorationStatistics, viewModel: AppViewModel) {
     ) {
         Text("Réglages", style = MaterialTheme.typography.headlineMedium)
         HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
+        if (BuildConfig.DEBUG) {
+            Text("Diagnostics développeur", style = MaterialTheme.typography.titleLarge)
+            Text("Les diagnostics GPS restent masqués par défaut.", style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Afficher le panneau GPS DEBUG")
+                Switch(
+                    checked = appState.showLocationDebug,
+                    onCheckedChange = viewModel::setLocationDebugVisible,
+                )
+            }
+            HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
+        }
         Text("Notifications", style = MaterialTheme.typography.titleLarge)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (notificationsAllowed) {

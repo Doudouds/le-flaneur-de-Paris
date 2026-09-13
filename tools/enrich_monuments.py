@@ -356,10 +356,11 @@ def parse_wikipedia_titles(value: str) -> dict[str, str]:
 
 
 class PopDescriptionIndex:
-    """Index the historical descriptions already imported in the Paris asset."""
+    """Index the POP evidence already imported in the Paris asset."""
 
     def __init__(self, path: Path | None):
         self.by_ref: dict[str, str] = {}
+        self.interest_by_ref: dict[str, str] = {}
         if not path or not path.exists():
             return
         try:
@@ -375,16 +376,24 @@ class PopDescriptionIndex:
             # Keep the richest description if an asset contains a duplicated ref.
             if len(description) > len(self.by_ref.get(key, "")):
                 self.by_ref[key] = description
+            interest = clean(entry.get("popInterest"))
+            if len(interest) > len(self.interest_by_ref.get(key, "")):
+                self.interest_by_ref[key] = interest
 
     def get(self, references: Iterable[str]) -> str:
         descriptions = [self.by_ref[compact(reference)] for reference in references if compact(reference) in self.by_ref]
         return max(descriptions, key=len, default="")
+
+    def interest(self, references: Iterable[str]) -> str:
+        interests = [self.interest_by_ref[compact(reference)] for reference in references if compact(reference) in self.interest_by_ref]
+        return max(interests, key=len, default="")
 
 
 def protection_components(
     resolver: ColumnResolver,
     row: list[str],
     pop_description: str = "",
+    pop_interest: str = "",
     wikidata_flags: dict[str, bool] | None = None,
 ) -> dict[str, int | str | list[str]]:
     """Score the historical/architectural importance from local protection tags."""
@@ -452,7 +461,7 @@ def protection_components(
     else:
         antiquity_score = 3
 
-    interest_text = normalize(" ".join(resolver.values(row, "criteria")) + " " + pop_description)
+    interest_text = normalize(" ".join(resolver.values(row, "criteria")) + " " + pop_description + " " + pop_interest)
     if any(term in interest_text for term in ("interet exceptionnel", "interet national", "importance nationale", "chef d oeuvre")):
         exceptional_score = 10
     elif any(term in interest_text for term in ("a signaler", "monument majeur", "site majeur", "interet majeur")):
@@ -716,7 +725,18 @@ class WikidataMatcher:
     def get_entity(self, qid: str) -> dict[str, Any] | None:
         cached = self.cache.get("wikidata_entity", qid)
         if cached is not None:
-            return cached if cached.get("_http_status") != 404 and "_error" not in cached else None
+            if cached.get("_http_status") == 404 or "_error" in cached:
+                return None
+            # Older single-entity lookups cached the whole ``wbgetentities``
+            # response, whereas the batch prefetch stores the entity itself.
+            # Accept both shapes and normalise the former on first reuse;
+            # otherwise a valid QID appears to have no labels, sitelinks or
+            # claims on every subsequent run.
+            wrapped_entity = (cached.get("entities") or {}).get(qid)
+            if isinstance(wrapped_entity, dict):
+                self.cache.set("wikidata_entity", qid, wrapped_entity)
+                return wrapped_entity
+            return cached
         if not self.online or (self.max_entity_requests and self.entity_requests >= self.max_entity_requests):
             return None
         self.entity_requests += 1
@@ -831,11 +851,14 @@ class WikidataMatcher:
         self.pageview_requests += 1
         encoded_title = quote(title.replace(" ", "_"), safe="")
         url = f"{PAGEVIEWS_API}/per-article/fr.wikipedia.org/all-access/all-agents/{encoded_title}/monthly/{start}/{end}"
-        payload = self.http.get_json(url) or {"_error": "offline"}
-        views = None
-        if "items" in payload:
-            views = sum(int(item.get("views", 0) or 0) for item in payload.get("items", []))
-        self.cache.set("wikipedia_pageviews", key, {"views": views if views is not None else 0, "period": f"{start}-{end}"})
+        payload = self.http.get_json(url)
+        # A temporary network failure is unknown data, not zero readership.
+        # Do not persist it: caching a synthetic zero would silently suppress
+        # a later retry and unfairly depress the monument's notoriety.
+        if not isinstance(payload, dict) or "items" not in payload:
+            return None, f"{start}-{end}"
+        views = sum(int(item.get("views", 0) or 0) for item in payload.get("items", []))
+        self.cache.set("wikipedia_pageviews", key, {"views": views, "period": f"{start}-{end}"})
         return views, f"{start}-{end}"
 
     def resolve(self, metadata: dict[str, Any]) -> dict[str, Any]:
@@ -1084,10 +1107,12 @@ def score_row(
 ) -> tuple[dict[str, Any], list[str]]:
     match = matcher.resolve(metadata)
     pop_description = pop_index.get(metadata["merimee_refs"])
+    pop_interest = pop_index.interest(metadata["merimee_refs"])
     importance_parts = protection_components(
         resolver,
         row,
         pop_description=pop_description,
+        pop_interest=pop_interest,
         wikidata_flags=match["wikidata_claim_flags"],
     )
     importance = min(

@@ -84,15 +84,27 @@ fun ParisApp(
 
 @Composable
 fun LocationPermissionLauncher(viewModel: AppViewModel) {
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true || grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        viewModel.setPermissionState(if (granted) LocationPermissionState.Granted else LocationPermissionState.Denied)
-    }
     val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(Unit) {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        val fineGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (granted) viewModel.setPermissionState(LocationPermissionState.Granted)
+        val coarseGranted = grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val granted = fineGranted || coarseGranted
+        viewModel.setPermissionState(
+            if (granted) LocationPermissionState.Granted else LocationPermissionState.Denied,
+            if (!granted) LocationPrecision.Unknown else if (fineGranted) LocationPrecision.Precise else LocationPrecision.Approximate,
+        )
+    }
+    LaunchedEffect(Unit) {
+        val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (fineGranted || coarseGranted) {
+            viewModel.setPermissionState(
+                LocationPermissionState.Granted,
+                if (fineGranted) LocationPrecision.Precise else LocationPrecision.Approximate,
+            )
+        }
     }
     Button(onClick = { launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) }) {
         Text("Autoriser la localisation")

@@ -535,9 +535,16 @@ def main() -> int:
                 report["errors"].append(f"{reference}: {error}")
 
         pop_dates = notice_values(notice, "DATE", "SCLE")
+        pop_interest = join_metadata(notice_values(notice, "INTE"))
         historical_dates = join_metadata(source.get("historical", []), pop_dates)
         protection_dates = join_metadata(source.get("protection", []))
         period = derive_period(historical_dates or "", " ".join(notice_values(notice, "SCLE", "DATE")))
+        # ``INTE`` is POP's explicit assessment of the monument (for example
+        # “à signaler”).  Keep this compact source value separately from the
+        # public-facing historical description so the rating pipeline can use
+        # it as an auditable heritage signal.
+        if pop_interest and not args.dry_run:
+            monument["popInterest"] = pop_interest
 
         reference_match = wikidata.get(reference, {})
         candidate_url = reference_match.get("article_url", "") or direct_urls.get(reference, "")

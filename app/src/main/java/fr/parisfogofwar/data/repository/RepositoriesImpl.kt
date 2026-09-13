@@ -1,6 +1,13 @@
 package fr.parisfogofwar.data.repository
 
 import android.content.Context
+import fr.parisfogofwar.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import org.json.JSONArray
 import fr.parisfogofwar.data.local.*
 import fr.parisfogofwar.domain.model.*
@@ -47,7 +54,17 @@ class RoomMonumentRepository(
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
     private val arrondissementResolver = ParisArrondissementResolver(context)
 
-    override suspend fun ensureCatalogImported() {
+    private val importMutex = Mutex()
+
+    override suspend fun ensureCatalogImported() = withContext(Dispatchers.IO) {
+        importMutex.withLock { importCatalogIfChanged() }
+    }
+
+    private suspend fun importCatalogIfChanged() {
+        val preferences = context.getSharedPreferences("catalog_import", Context.MODE_PRIVATE)
+        // Include the mapping version so importer changes can invalidate this cache too.
+        val fingerprint = "1:" + BuildConfig.CATALOG_FINGERPRINT
+        if (preferences.getString("fingerprint", null) == fingerprint && dao.count() > 0) return
         val entries = context.assets.open("paris_monuments.json").bufferedReader().use { reader ->
             json.decodeFromString<List<MonumentAsset>>(reader.readText())
         }
@@ -87,40 +104,23 @@ class RoomMonumentRepository(
                 gridY = cell.y,
             )
         }.distinctBy { it.id }
-        if (dao.count() == 0) {
-            dao.insertAll(entities)
-        } else {
-            entities.forEach { monument ->
-                dao.updateCatalogMetadata(
-                    monumentId = monument.id,
-                    description = monument.description,
-                    descriptionSource = monument.descriptionSource,
-                    historicalDates = monument.historicalDates,
-                    historicalPeriod = monument.historicalPeriod,
-                    protectionDates = monument.protectionDates,
-                    wikipediaUrl = monument.wikipediaUrl,
-                    popHistoricalDescription = monument.popHistoricalDescription,
-                    interestScore = monument.interestScore,
-                    interestPercentile = monument.interestPercentile,
-                    stars = monument.stars,
-                )
-            }
-        }
+        dao.importCatalog(entities)
+        // Only mark a successful transaction; an interrupted import is safe to retry.
+        preferences.edit().putString("fingerprint", fingerprint).commit()
     }
-
-    override fun observeCatalogMonuments(): Flow<List<Monument>> = dao.observeAll().map { list ->
+    override fun observeCatalogMonuments(): Flow<List<Monument>> = dao.observeAll().distinctUntilChanged().map { list ->
         list.map { it.toDomain() }
-    }
+    }.flowOn(Dispatchers.Default)
 
-    override fun observeRevealedMonuments(): Flow<List<Monument>> = dao.observeRevealed().map { list ->
+    override fun observeRevealedMonuments(): Flow<List<Monument>> = dao.observeRevealed().distinctUntilChanged().map { list ->
         list.map { row -> row.monument.toDomain(row.discoveredAtEpochMillis) }
-    }
+    }.flowOn(Dispatchers.Default)
 
     override fun observeTotalCount(): Flow<Int> = dao.observeCount()
 
-    override fun observeArrondissementTotals(): Flow<Map<Int?, Int>> = dao.observeAll().map { monuments ->
+    override fun observeArrondissementTotals(): Flow<Map<Int?, Int>> = dao.observeAll().distinctUntilChanged().map { monuments ->
         monuments.groupingBy { arrondissementResolver.find(it.latitude, it.longitude) }.eachCount()
-    }
+    }.flowOn(Dispatchers.Default)
 
     override fun observeMonumentCells(): Flow<Set<GridCellId>> = dao.observeMonumentCells().map { rows ->
         rows.mapTo(mutableSetOf()) { GridCellId(it.gridX, it.gridY) }
@@ -192,7 +192,7 @@ private class ParisArrondissementResolver(context: Context) {
 }
 
 class RoomExplorationRepository(private val dao: DiscoveredCellDao) : ExplorationRepository {
-    override fun observeDiscoveredCells(): Flow<Set<GridCellId>> = dao.observeAll().map { rows ->
+    override fun observeDiscoveredCells(): Flow<Set<GridCellId>> = dao.observeAll().distinctUntilChanged().map { rows ->
         rows.mapTo(mutableSetOf()) { GridCellId(it.gridX, it.gridY) }
     }
 
@@ -201,5 +201,5 @@ class RoomExplorationRepository(private val dao: DiscoveredCellDao) : Exploratio
 
     override suspend fun resetProgress() = dao.deleteAll()
 
-    override fun observeDiscoveryDates(): Flow<List<Long>> = dao.observeAll().map { rows -> rows.map { it.discoveredAtEpochMillis } }
+    override fun observeDiscoveryDates(): Flow<List<Long>> = dao.observeAll().distinctUntilChanged().map { rows -> rows.map { it.discoveredAtEpochMillis } }
 }

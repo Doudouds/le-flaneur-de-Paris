@@ -135,7 +135,20 @@ private fun parisBoundaryContains(location: LatLng): Boolean {
     return inside
 }
 
-data class DomainLocation(val coordinates: LatLng, val accuracyMeters: Float, val timestampMillis: Long)
+/**
+ * A location as reported by Android, kept separate from the filtered position
+ * used by the game and the map.
+ */
+data class DomainLocation(
+    val coordinates: LatLng,
+    val accuracyMeters: Float,
+    val timestampMillis: Long,
+    val elapsedRealtimeNanos: Long? = null,
+    val provider: String? = null,
+    val speedMetersPerSecond: Float? = null,
+    val speedAccuracyMetersPerSecond: Float? = null,
+    val bearingDegrees: Float? = null,
+)
 
 data class Monument(
     val id: String,

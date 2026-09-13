@@ -48,27 +48,73 @@ class GeoTest {
         assertEquals(1, repo.dates.value.size)
     }
 
-    @Test fun locationDisplayFilterRejectsPoorAccuracyAndLargeJumps() {
-        val filter = LocationDisplayFilter()
-        val first = DomainLocation(LatLng(48.8566, 2.3522), 10f, 1_000L)
+    @Test fun pedestrianWalkAcceptsCoherentPositions() {
+        val filter = LocationQualityManager()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 8f, 1_000L, speedMetersPerSecond = 2.5f)
+        val next = DomainLocation(LatLng(48.856627, 2.3522), 8f, 2_000L, speedMetersPerSecond = 2.5f)
 
-        assertEquals(first.coordinates, filter.accept(first, nowMillis = 2_000L))
-        assertNull(filter.accept(first.copy(accuracyMeters = 101f, timestampMillis = 6_000L), nowMillis = 6_000L))
-        assertNull(filter.accept(DomainLocation(LatLng(48.8666, 2.3522), 10f, 6_000L), nowMillis = 6_000L))
-        assertNull(filter.accept(first.copy(timestampMillis = 1_000L), nowMillis = 32_001L))
+        assertEquals(LocationDecision.ACCEPTED, filter.process(first, nowMillis = 1_000L).decision)
+        val update = filter.process(next, nowMillis = 2_000L)
+
+        assertTrue(update.filtered != null)
+        assertTrue(update.decision == LocationDecision.SMOOTHED || update.decision == LocationDecision.ACCEPTED)
+        assertTrue(update.safeForFogOfWar)
     }
 
-    @Test fun locationDisplayFilterSmoothsSmallMovements() {
-        val filter = LocationDisplayFilter()
-        val first = DomainLocation(LatLng(48.8566, 2.3522), 10f, 1_000L)
-        val next = DomainLocation(LatLng(48.8567, 2.3522), 10f, 6_000L)
+    @Test fun stationaryGpsDriftDoesNotMoveFilteredPosition() {
+        val filter = LocationQualityManager()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 6f, 1_000L, speedMetersPerSecond = 0f)
+        val driftEast = DomainLocation(LatLng(48.8566, 2.35223), 6f, 2_000L, speedMetersPerSecond = 0f)
+        val driftWest = DomainLocation(LatLng(48.8566, 2.35218), 6f, 3_000L, speedMetersPerSecond = 0f)
 
-        filter.accept(first, nowMillis = 2_000L)
-        val displayed = filter.accept(next, nowMillis = 6_000L)
+        val firstUpdate = filter.process(first, nowMillis = 1_000L)
+        val secondUpdate = filter.process(driftEast, nowMillis = 2_000L)
+        val thirdUpdate = filter.process(driftWest, nowMillis = 3_000L)
 
-        assertNotNull(displayed)
-        assertTrue(displayed!!.latitude > first.coordinates.latitude)
-        assertTrue(displayed.latitude < next.coordinates.latitude)
+        assertEquals(first.coordinates, firstUpdate.filtered?.coordinates)
+        assertEquals(first.coordinates, secondUpdate.filtered?.coordinates)
+        assertEquals(first.coordinates, thirdUpdate.filtered?.coordinates)
+        assertEquals(LocationDecision.STATIONARY_HOLD, thirdUpdate.decision)
+    }
+
+    @Test fun largeOneSecondGpsJumpIsRejected() {
+        val filter = LocationQualityManager()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 6f, 1_000L, speedMetersPerSecond = 0f)
+        val jump = DomainLocation(LatLng(48.8566, 2.3527), 6f, 2_000L)
+
+        filter.process(first, nowMillis = 1_000L)
+        val update = filter.process(jump, nowMillis = 2_000L)
+
+        assertEquals(LocationDecision.REJECTED_ABERRANT, update.decision)
+        assertNull(update.filtered)
+        assertFalse(update.safeForFogOfWar)
+    }
+
+    @Test fun poorAccuracyCanBeDisplayedButCannotRevealFog() {
+        val filter = LocationQualityManager()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 8f, 1_000L, speedMetersPerSecond = 1f)
+        val poor = DomainLocation(LatLng(48.85668, 2.3522), 80f, 2_000L, speedMetersPerSecond = 1f)
+
+        filter.process(first, nowMillis = 1_000L)
+        val update = filter.process(poor, nowMillis = 2_000L)
+
+        assertEquals(LocationQuality.POOR, update.quality)
+        assertNotNull(update.filtered)
+        assertFalse(update.safeForFogOfWar)
+    }
+
+    @Test fun directionChangeIsFollowedWithoutLongStraightLineLag() {
+        val filter = LocationQualityManager()
+        val first = DomainLocation(LatLng(48.8566, 2.3522), 6f, 1_000L, speedMetersPerSecond = 2.5f)
+        val north = DomainLocation(LatLng(48.85663, 2.3522), 6f, 2_000L, speedMetersPerSecond = 2.5f)
+        val east = DomainLocation(LatLng(48.85663, 2.35224), 6f, 3_000L, speedMetersPerSecond = 2.5f)
+
+        filter.process(first, nowMillis = 1_000L)
+        filter.process(north, nowMillis = 2_000L)
+        val turned = filter.process(east, nowMillis = 3_000L)
+
+        assertTrue(turned.filtered!!.coordinates.longitude > north.coordinates.longitude)
+        assertTrue(turned.filtered.coordinates.latitude <= east.coordinates.latitude)
     }
 }
 
