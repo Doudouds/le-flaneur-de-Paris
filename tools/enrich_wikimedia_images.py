@@ -28,6 +28,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from image_match import score_candidate
+
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 WIKIDATA_SPARQL = "https://query.wikidata.org/sparql"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -158,6 +160,8 @@ def parse_images(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "imageSource": "Wikimedia Commons",
             "_title": title,
             "_description": clean_metadata((metadata.get("ImageDescription") or {}).get("value")) or "",
+            "_latitude": ((page.get("coordinates") or [{}])[0]).get("lat"),
+            "_longitude": ((page.get("coordinates") or [{}])[0]).get("lon"),
         })
     return results
 
@@ -174,6 +178,19 @@ def matches_name(image: dict[str, Any], monument_name: str) -> bool:
         return True
     tokens = [token for token in name.split() if len(token) >= 5 and token not in GENERIC_TOKENS]
     return bool(tokens) and sum(token in haystack for token in tokens) >= max(1, (len(tokens) + 1) // 2)
+
+
+def candidate_matches_monument(image: dict[str, Any], item: dict[str, Any]) -> bool:
+    return score_candidate(
+        candidate_text=f'{image.get("_title", "")} {image.get("_description", "")}',
+        monument_name=item.get("name", ""),
+        wikipedia_url=item.get("wikipediaUrl"),
+        merimee_reference=item.get("merimeeReference"),
+        candidate_latitude=image.get("_latitude"),
+        candidate_longitude=image.get("_longitude"),
+        monument_latitude=item.get("latitude", 0),
+        monument_longitude=item.get("longitude", 0),
+    ) >= 70
 
 
 def commons_search(params: dict[str, str], use_post: bool = False) -> list[dict[str, Any]]:
@@ -242,7 +259,7 @@ def commons_reference_search(references: list[str], batch_size: int = 25) -> dic
     result: dict[str, dict[str, Any]] = {}
     for offset in range(0, len(references), batch_size):
         batch = references[offset: offset + batch_size]
-        search = " OR ".join(f'insource:"{reference}"' for reference in batch)
+        search = "insource:/" + "|".join(re.escape(reference) for reference in batch) + "/"
         try:
             images = commons_search({
                 "generator": "search",
@@ -308,6 +325,10 @@ def main() -> int:
                 }) if matches_name(image, item.get("name", ""))), None)
             except (HTTPError, URLError, TimeoutError) as error:
                 print(f"Recherche géographique échouée pour {item.get('name')}: {error}", file=sys.stderr)
+
+        if candidate is not None and not candidate_matches_monument(candidate, item):
+            print(f"Candidat Commons rejeté après vérification: {item.get('name')} ({item.get('merimeeReference')})", file=sys.stderr)
+            candidate = None
 
         if candidate is not None:
             found += 1

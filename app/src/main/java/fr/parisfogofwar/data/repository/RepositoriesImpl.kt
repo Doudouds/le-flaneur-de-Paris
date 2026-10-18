@@ -105,6 +105,23 @@ class RoomMonumentRepository(
             )
         }.distinctBy { it.id }
         dao.importCatalog(entities)
+        // A curated embedded image is an explicit correction and must replace
+        // any image previously resolved and persisted in Room. Null asset
+        // values intentionally leave runtime lookups untouched.
+        entities.forEach { item ->
+            val imageUrl = item.imageUrl ?: return@forEach
+            val imageLicense = item.imageLicense ?: return@forEach
+            dao.updateEmbeddedImage(
+                monumentId = item.id,
+                imageUrl = imageUrl,
+                imagePageUrl = item.imagePageUrl,
+                imageAuthor = item.imageAuthor,
+                imageLicense = imageLicense,
+                imageLicenseUrl = item.imageLicenseUrl,
+                imageSource = item.imageSource,
+                imageLookupCompleted = item.imageLookupCompleted,
+            )
+        }
         // Only mark a successful transaction; an interrupted import is safe to retry.
         preferences.edit().putString("fingerprint", fingerprint).commit()
     }

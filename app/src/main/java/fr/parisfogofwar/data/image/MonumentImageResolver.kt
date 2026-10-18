@@ -13,6 +13,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.text.Normalizer
 import java.util.Locale
 import javax.inject.Inject
@@ -55,6 +56,8 @@ private data class ResolvedImage(
     val license: String,
     val licenseUrl: String?,
     val searchText: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val source: String = "Wikimedia Commons",
 )
 
@@ -69,7 +72,8 @@ private class CommonsClient {
                     "gsrnamespace" to "6",
                     "gsrlimit" to "10",
                 ),
-            ).firstOrNull()
+            ).filter { candidate -> candidateMatchesMonument(candidate, monument) }
+                .maxByOrNull { candidate -> candidateScore(candidate, monument) }
             if (exact != null) return exact
         }
 
@@ -82,13 +86,14 @@ private class CommonsClient {
                 "ggscoord" to "${monument.latitude}|${monument.longitude}",
                 "ggslimit" to "20",
             ),
-        ).firstOrNull { candidate -> candidateMatchesMonument(candidate, monument.name) }
+        ).filter { candidate -> candidateMatchesMonument(candidate, monument) }
+            .maxByOrNull { candidate -> candidateScore(candidate, monument) }
     }
 
     private fun buildUrl(vararg params: Pair<String, String>): String {
         val query = buildList {
             add("action=query")
-            add("prop=imageinfo")
+            add("prop=imageinfo|coordinates")
             add("iiprop=url|mime|extmetadata")
             add("iiurlwidth=900")
             add("format=json")
@@ -137,6 +142,7 @@ private class CommonsClient {
             val author = metadataText(metadata, "Artist")
                 ?: metadataText(metadata, "Credit")
             val description = metadataText(metadata, "ImageDescription").orEmpty()
+            val coordinates = page.optJSONArray("coordinates")?.optJSONObject(0)
             images += ResolvedImage(
                 thumbnailUrl = thumbnailUrl.toHttps(),
                 pageUrl = "https://commons.wikimedia.org/wiki/${Uri.encode(title.replace(' ', '_'))}",
@@ -144,6 +150,8 @@ private class CommonsClient {
                 license = license,
                 licenseUrl = metadataText(metadata, "LicenseUrl") ?: licenseUrl(license),
                 searchText = "$title $description",
+                latitude = coordinates?.optDouble("lat")?.takeUnless(Double::isNaN),
+                longitude = coordinates?.optDouble("lon")?.takeUnless(Double::isNaN),
             )
         }
         return images
@@ -158,72 +166,148 @@ private class CommonsClient {
             .takeIf(String::isNotBlank)
     }
 
-    @VisibleForTesting
-    internal fun candidateMatchesMonument(candidate: ResolvedImage, monumentName: String): Boolean {
-        val haystack = normalize(candidate.searchText + " " + candidate.author.orEmpty())
-        val name = normalize(monumentName)
-        if (name.length >= 8 && haystack.contains(name)) return true
-        val meaningfulTokens = name.split(' ')
-            .filter { it.length >= 5 }
-            .filterNot { it in GENERIC_TOKENS }
-        if (meaningfulTokens.isEmpty()) return false
-        val matches = meaningfulTokens.count(haystack::contains)
-        return matches >= maxOf(1, (meaningfulTokens.size + 1) / 2)
-    }
+    private fun candidateMatchesMonument(candidate: ResolvedImage, monument: Monument): Boolean =
+        monumentImageCandidateScore(
+            candidateText = candidate.searchText + " " + candidate.author.orEmpty(),
+            monumentName = monument.name,
+            wikipediaUrl = monument.wikipediaUrl,
+            merimeeReference = monument.merimeeReference,
+            candidateLatitude = candidate.latitude,
+            candidateLongitude = candidate.longitude,
+            monumentLatitude = monument.latitude,
+            monumentLongitude = monument.longitude,
+        ) >= MINIMUM_MATCH_SCORE
 
-    private fun normalize(value: String): String = Normalizer.normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "")
-        .replace("œ", "oe")
-        .replace("æ", "ae")
-        .replace(Regex("[^a-z0-9]+"), " ")
-        .trim()
+    private fun candidateScore(candidate: ResolvedImage, monument: Monument): Int =
+        monumentImageCandidateScore(
+            candidateText = candidate.searchText + " " + candidate.author.orEmpty(),
+            monumentName = monument.name,
+            wikipediaUrl = monument.wikipediaUrl,
+            merimeeReference = monument.merimeeReference,
+            candidateLatitude = candidate.latitude,
+            candidateLongitude = candidate.longitude,
+            monumentLatitude = monument.latitude,
+            monumentLongitude = monument.longitude,
+        )
+    }
 
     private fun String.toHttps(): String = if (startsWith("http://")) replaceFirst("http://", "https://") else this
 
-    companion object {
-        private const val TAG = "MonumentImageResolver"
-        private val GENERIC_TOKENS = setOf(
-            "ancien", "ancienne", "actuellement", "immeuble", "monument", "historique",
-            "maison", "hôtel", "hotel", "paris", "église", "eglise", "chapelle",
-        )
+private const val TAG = "MonumentImageResolver"
+private const val MINIMUM_MATCH_SCORE = 70
 
-        @VisibleForTesting
-        internal fun isReusableLicense(value: String): Boolean {
-            val normalized = value.lowercase(Locale.ROOT)
-            if (listOf("nc", "nd", "non-free", "non free", "fair use", "copyright", "gfdl").any(normalized::contains)) return false
-            return normalized.contains("public domain") ||
-                normalized.contains("public-domain") ||
-                normalized.contains("cc0") ||
-                normalized.matches(Regex(".*\\bcc[- ]?by(?:[- ]?sa)?\\b.*"))
-        }
+@VisibleForTesting
+internal fun isReusableLicense(value: String): Boolean {
+    val normalized = value.lowercase(Locale.ROOT)
+    if (listOf("nc", "nd", "non-free", "non free", "fair use", "copyright", "gfdl").any(normalized::contains)) return false
+    return normalized.contains("public domain") ||
+        normalized.contains("public-domain") ||
+        normalized.contains("cc0") ||
+        normalized.matches(Regex(".*\\bcc[- ]?by(?:[- ]?sa)?\\b.*"))
+}
 
-        @VisibleForTesting
-        internal fun isReusablePopRights(value: String): Boolean {
-            val normalized = value.lowercase(Locale.ROOT)
-            if (normalized.isBlank()) return false
-            return listOf(
-                "public domain",
-                "domaine public",
-                "cc0",
-                "cc by",
-                "cc-by",
-                "cc by-sa",
-                "cc-by-sa",
-                "creative commons attribution",
-                "licence ouverte",
-                "open licence",
-            ).any(normalized::contains)
-        }
+@VisibleForTesting
+internal fun isReusablePopRights(value: String): Boolean {
+    val normalized = value.lowercase(Locale.ROOT)
+    if (normalized.isBlank()) return false
+    if (Regex("\\b(nc|nd|gfdl)\\b").containsMatchIn(normalized) ||
+        normalized.contains("non-free") || normalized.contains("non free") ||
+        normalized.contains("fair use") || normalized.contains("copyright")
+    ) return false
+    return listOf(
+        "public domain",
+        "domaine public",
+        "cc0",
+        "cc by",
+        "cc-by",
+        "cc by-sa",
+        "cc-by-sa",
+        "creative commons attribution",
+        "licence ouverte",
+        "open licence",
+    ).any(normalized::contains)
+}
 
-        private fun licenseUrl(value: String): String? {
-            val normalized = value.lowercase(Locale.ROOT)
-            if (normalized.contains("cc0")) return "https://creativecommons.org/publicdomain/zero/1.0/"
-            val sa = normalized.contains("sa")
-            val version = Regex("(\\d+(?:\\.\\d+)?)").find(normalized)?.groupValues?.get(1) ?: return null
-            return "https://creativecommons.org/licenses/${if (sa) "by-sa" else "by"}/$version/"
+private fun licenseUrl(value: String): String? {
+    val normalized = value.lowercase(Locale.ROOT)
+    if (normalized.contains("cc0")) return "https://creativecommons.org/publicdomain/zero/1.0/"
+    val sa = normalized.contains("sa")
+    val version = Regex("(\\d+(?:\\.\\d+)?)").find(normalized)?.groupValues?.get(1) ?: return null
+    return "https://creativecommons.org/licenses/${if (sa) "by-sa" else "by"}/$version/"
+}
+
+/**
+ * Shared, conservative matching rules for online image lookup and offline
+ * catalogue audits. A Mérimée reference alone is deliberately insufficient:
+ * Commons and POP can contain stale or incorrectly attached media.
+ */
+internal fun monumentImageCandidateScore(
+    candidateText: String,
+    monumentName: String,
+    wikipediaUrl: String?,
+    merimeeReference: String?,
+    candidateLatitude: Double?,
+    candidateLongitude: Double?,
+    monumentLatitude: Double,
+    monumentLongitude: Double,
+): Int {
+    val haystack = normalizeImageText(candidateText)
+    val aliases = buildList {
+        add(normalizeImageText(monumentName))
+        wikipediaUrl?.substringAfterLast('/')?.let { encodedTitle ->
+            val title = runCatching { URLDecoder.decode(encodedTitle, Charsets.UTF_8.name()) }.getOrNull()
+            if (!title.isNullOrBlank()) add(normalizeImageText(title.replace('_', ' ')))
         }
+    }.filter { it.length >= 5 }.distinct()
+
+    val strongestAlias = aliases.maxOfOrNull { alias ->
+        val tokens = alias.split(' ')
+            .filter { it.length >= 5 }
+            .filterNot { it in IMAGE_GENERIC_TOKENS }
+        if (tokens.isEmpty()) 0 else tokens.count { token -> haystack.split(' ').contains(token) }
+    } ?: 0
+    val strongPhrase = aliases.any { alias -> alias.length >= 8 && haystack.contains(alias) }
+    val strongestTokenCount = aliases.maxOfOrNull { alias ->
+        alias.split(' ').count { it.length >= 5 && it !in IMAGE_GENERIC_TOKENS }
+    } ?: 0
+    val strongNameMatch = strongPhrase || (
+        strongestTokenCount >= 2 && strongestAlias >= maxOf(2, (strongestTokenCount + 1) / 2)
+    )
+    val referenceMatch = !merimeeReference.isNullOrBlank() &&
+        haystack.contains(normalizeImageText(merimeeReference))
+    val nearMonument = candidateLatitude != null && candidateLongitude != null &&
+        imageDistanceMeters(candidateLatitude, candidateLongitude, monumentLatitude, monumentLongitude) <= 750.0
+
+    return when {
+        referenceMatch && strongNameMatch -> 100
+        referenceMatch && nearMonument -> 96
+        strongNameMatch && nearMonument -> 90
+        strongNameMatch -> 70
+        else -> 0
     }
 }
+
+private fun normalizeImageText(value: String): String = Normalizer.normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+    .replace(Regex("\\p{Mn}+"), "")
+    .replace("œ", "oe")
+    .replace("æ", "ae")
+    .replace(Regex("[^a-z0-9]+"), " ")
+    .trim()
+
+private fun imageDistanceMeters(latitudeA: Double, longitudeA: Double, latitudeB: Double, longitudeB: Double): Double {
+    val earthRadiusMeters = 6_371_000.0
+    val latDistance = Math.toRadians(latitudeB - latitudeA)
+    val lonDistance = Math.toRadians(longitudeB - longitudeA)
+    val a = kotlin.math.sin(latDistance / 2).let { it * it } +
+        kotlin.math.cos(Math.toRadians(latitudeA)) * kotlin.math.cos(Math.toRadians(latitudeB)) *
+        kotlin.math.sin(lonDistance / 2).let { it * it }
+    return earthRadiusMeters * 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+}
+
+private val IMAGE_GENERIC_TOKENS = setOf(
+    "ancien", "ancienne", "actuellement", "immeuble", "monument", "historique",
+    "maison", "hotel", "paris", "eglise", "chapelle",
+)
 
 private class PopClient {
     fun find(monument: Monument): ResolvedImage? {
@@ -238,9 +322,22 @@ private class PopClient {
         for (index in 0 until images.length()) {
             val image = images.optJSONObject(index) ?: continue
             val rights = image.optString("copy").trim()
-            if (!CommonsClient.isReusablePopRights(rights)) continue
+            if (!isReusablePopRights(rights)) continue
             val imagePath = image.optString("url").trim()
             if (imagePath.isBlank()) continue
+
+            val imageText = image.toString()
+            val matchScore = monumentImageCandidateScore(
+                candidateText = imageText,
+                monumentName = monument.name,
+                wikipediaUrl = monument.wikipediaUrl,
+                merimeeReference = null,
+                candidateLatitude = null,
+                candidateLongitude = null,
+                monumentLatitude = monument.latitude,
+                monumentLongitude = monument.longitude,
+            )
+            if (matchScore < 70) continue
 
             return ResolvedImage(
                 thumbnailUrl = imagePath.toPopImageUrl(),
@@ -248,7 +345,7 @@ private class PopClient {
                 author = null,
                 license = rights,
                 licenseUrl = null,
-                searchText = "${image.optString("name")} $reference",
+                searchText = imageText,
                 source = "POP — Plateforme ouverte du patrimoine",
             )
         }
@@ -281,7 +378,6 @@ private class PopClient {
         "$POP_BUCKET_URL${trimStart('/')}"
     }
 
-    private companion object {
-        const val POP_BUCKET_URL = "https://popcorn-prd-perf-assets.s3.gra.io.cloud.ovh.net/"
-    }
 }
+
+private const val POP_BUCKET_URL = "https://popcorn-prd-perf-assets.s3.gra.io.cloud.ovh.net/"

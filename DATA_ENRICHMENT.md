@@ -82,6 +82,22 @@ SQLite afin de rendre cette passe reprenable.
 Le rapport de cette passe est distinct :
 `outputs/description_enrichment/metadata_enrichment_report.json`.
 
+## Audit des images Wikimedia
+
+Le résolveur Android et le script d’enrichissement ne retiennent plus le
+premier résultat correspondant à une référence Mérimée. Ils exigent aussi une
+concordance de nom/alias Wikipédia ou une localisation proche. L’audit complet
+du catalogue est en lecture seule :
+
+```powershell
+python tools/audit_wikimedia_images.py --all
+```
+
+Le rapport `outputs/image_audit/wikimedia_image_audit.csv` détaille chaque
+monument et `wikimedia_image_audit.json` fournit les compteurs et les candidats
+à revoir. Les statuts `mismatch`, `unlicensed`, `candidate_mismatch` et
+`candidate_unlicensed` nécessitent une revue avant publication.
+
 ## Audit des sources Wikipédia
 
 Après l'enrichissement, [`tools/audit_wikipedia_sources.py`](tools/audit_wikipedia_sources.py)

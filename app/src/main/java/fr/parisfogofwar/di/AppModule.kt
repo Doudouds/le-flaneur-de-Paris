@@ -94,6 +94,24 @@ object AppModule {
         }
     }
 
+    private val imageVerificationMigration = object : Migration(8, 9) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Images resolved by the previous matcher were not checked against
+            // the monument name or location. Re-resolve every cached image so
+            // the stricter matcher can remove stale or misassigned media.
+            database.execSQL("""
+                UPDATE monuments SET
+                    imageUrl = NULL,
+                    imagePageUrl = NULL,
+                    imageAuthor = NULL,
+                    imageLicense = NULL,
+                    imageLicenseUrl = NULL,
+                    imageSource = NULL,
+                    imageLookupCompleted = 0
+            """.trimIndent())
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "paris_fog_of_war.db")
@@ -104,6 +122,7 @@ object AppModule {
             .addMigrations(interestRatingMigration)
             .addMigrations(descriptionSourceMigration)
             .addMigrations(historicalMetadataMigration)
+            .addMigrations(imageVerificationMigration)
             .build()
 
     @Provides fun provideMonumentDao(database: AppDatabase) = database.monumentDao()

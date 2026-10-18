@@ -36,6 +36,8 @@ Le téléchargement hors connexion dépend des droits et conditions du fournisse
 
 Les images de monuments sont recherchées de façon conservatrice sur Wikimedia Commons. L’application conserve uniquement les images avec une licence réutilisable identifiée (domaine public, CC0, CC BY ou CC BY-SA), affiche l’auteur et la licence dans le détail du monument, puis met les vignettes en cache local dans `monument-image-cache`. Pour enrichir le fichier embarqué avant une publication, exécuter `python tools/enrich_wikimedia_images.py` ; le script regroupe et ralentit ses requêtes. Une recherche géographique complémentaire, plus lente, est disponible avec `--geosearch`. À défaut, la recherche se fait progressivement à l’affichage ; une connexion est alors nécessaire lors de la première consultation.
 
+Avant une publication, vérifier les associations avec `python tools/audit_wikimedia_images.py --all`. L’audit recherche les références Mérimée dans Commons, contrôle le nom ou l’alias Wikipédia, la proximité géographique et la licence, puis écrit un rapport CSV/JSON dans `outputs/image_audit` sans modifier le catalogue. Une image déjà en cache est également invalidée lors de la migration vers la vérification renforcée.
+
 La grille est calculée en Web Mercator EPSG:3857 avec des cellules stables de 100 m. Pour garder la carte fluide, le brouillard est généré pour la fenêtre de Paris affichée avec une marge ; la base ne stocke que les cellules découvertes.
 
 En debug, un appui long sur la carte simule la découverte de la cellule. Cette fonction est protégée par `BuildConfig.DEBUG` et n’est pas disponible dans le build release.

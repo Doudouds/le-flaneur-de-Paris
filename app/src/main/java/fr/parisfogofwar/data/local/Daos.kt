@@ -74,6 +74,28 @@ interface MonumentDao {
         imageSource: String?,
     )
 
+    @Query("""
+        UPDATE monuments SET
+            imageUrl = :imageUrl,
+            imagePageUrl = :imagePageUrl,
+            imageAuthor = :imageAuthor,
+            imageLicense = :imageLicense,
+            imageLicenseUrl = :imageLicenseUrl,
+            imageSource = :imageSource,
+            imageLookupCompleted = :imageLookupCompleted
+        WHERE id = :monumentId
+    """)
+    suspend fun updateEmbeddedImage(
+        monumentId: String,
+        imageUrl: String,
+        imagePageUrl: String?,
+        imageAuthor: String?,
+        imageLicense: String,
+        imageLicenseUrl: String?,
+        imageSource: String?,
+        imageLookupCompleted: Boolean,
+    )
+
     @Query("UPDATE monuments SET description = :description, descriptionSource = :descriptionSource, historicalDates = :historicalDates, historicalPeriod = :historicalPeriod, protectionDates = :protectionDates, wikipediaUrl = :wikipediaUrl, popHistoricalDescription = :popHistoricalDescription, interestScore = :interestScore, interestPercentile = :interestPercentile, stars = :stars WHERE id = :monumentId")
     suspend fun updateCatalogMetadata(
         monumentId: String,
